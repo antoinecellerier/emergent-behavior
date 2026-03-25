@@ -243,23 +243,15 @@ def _generate_settings():
     """Generate sandbox settings with resolved absolute paths for permissions."""
     global SETTINGS_FILE
     base = json.loads(SANDBOX_SETTINGS_TEMPLATE.read_text())
-    # Permission paths: // prefix = absolute. Deny wins over allow regardless of
-    # specificity, so we deny specific sensitive dirs rather than all of ~.
-    base["permissions"] = {
-        "deny": [
-            f"Read(/{HOME_DIR}/.ssh/**)",
-            f"Read(/{HOME_DIR}/.gnupg/**)",
-            f"Read(/{HOME_DIR}/.aws/**)",
-            f"Read(/{HOME_DIR}/.config/**)",
-            f"Read(/{HOME_DIR}/.claude/**)",
-            f"Read(/{HOME_DIR}/.env)",
-        ],
-        "allow": [
-            f"Read(/{PROJECT_DIR}/**)",
-            f"Edit(/{PROJECT_DIR}/**)",
-            f"Write(/{PROJECT_DIR}/**)",
-        ],
-    }
+    # Hooks provide default-deny reads (only project, /usr, /tmp allowed).
+    # The sandbox filesystem layer handles Bash; the hook handles Read/Edit/Glob/Grep.
+    hook_path = str(Path(PROJECT_DIR) / ".claude" / "hooks" / "sandbox-read.sh")
+    base["hooks"] = [
+        {
+            "event": "PreToolUse",
+            "handler": {"command": [hook_path]},
+        }
+    ]
     SETTINGS_FILE = LOGS_DIR / "sandbox-settings.json"
     SETTINGS_FILE.write_text(json.dumps(base, indent=2) + "\n")
 
