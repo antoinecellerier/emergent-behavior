@@ -812,8 +812,8 @@ def main():
 
     try:
         # Planning rounds: agents discuss priorities before anyone writes code
-        if args.start_round <= 0 or args.planning_rounds == 0:
-            pass  # skip planning if resuming past it or disabled
+        if resume or args.planning_rounds == 0:
+            pass  # skip planning on resume or if disabled
         else:
             for plan_round in range(1, args.planning_rounds + 1):
                 log(f"\n{BOLD}{'#' * 60}")
