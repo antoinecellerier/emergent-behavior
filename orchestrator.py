@@ -274,15 +274,29 @@ def append_to_board(agent: str, round_num: int, text: str):
     board.write_text(board.read_text() + entry)
 
 
-def build_prompt(agent: str, round_num: int, num_rounds: int) -> str:
+def build_prompt(agent: str, round_num: int, num_rounds: int, *, planning: bool = False) -> str:
     tree    = workspace_tree()
     gitlog  = recent_git_log()
+
+    if planning:
+        action = (
+            "This is a PLANNING round. Do NOT write any code or create files.\n"
+            "Read MESSAGE_BOARD.md, then propose what the team should prioritize "
+            "and what YOU plan to work on in the first implementation round. "
+            "Discuss dependencies — what needs to happen before what? "
+            "Respond to any proposals from teammates who went before you."
+        )
+    else:
+        action = (
+            "Do your work for this turn. Start by reading MESSAGE_BOARD.md and any "
+            "relevant source files, then make your contribution."
+        )
+
     return (
         f"## Status — Round {round_num} of {num_rounds}\n\n"
         f"### Workspace files\n{tree}\n\n"
         f"### Recent git history\n{gitlog}\n\n---\n\n"
-        f"Do your work for this turn. Start by reading MESSAGE_BOARD.md and any "
-        f"relevant source files, then make your contribution.\n\n"
+        f"{action}\n\n"
         f"When finished, write a short summary of what you did and any notes "
         f"for teammates."
     )
@@ -388,13 +402,16 @@ def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
     return result_text.strip(), elapsed, raw_events
 
 
-def run_agent(agent: str, round_num: int, num_rounds: int) -> str:
+def run_agent(agent: str, round_num: int, num_rounds: int, *, planning: bool = False) -> str:
     cfg              = AGENT_CONFIGS.get(agent, {})
     model            = cfg.get("model", "sonnet")
     effort           = cfg.get("effort", "medium")
     disallowed_tools = cfg.get("disallowed_tools", [])
+    if planning:
+        # During planning, block all write tools — discussion only
+        disallowed_tools = list(set(disallowed_tools) | {"Bash", "Write", "Edit", "NotebookEdit"})
     system = SHARED_CONTEXT + "\n\n" + AGENT_ROLES[agent]
-    prompt = build_prompt(agent, round_num, num_rounds)
+    prompt = build_prompt(agent, round_num, num_rounds, planning=planning)
     color  = COLORS.get(agent, "")
 
     blocked = ",".join(disallowed_tools) if disallowed_tools else "(none)"
@@ -417,10 +434,13 @@ def run_agent(agent: str, round_num: int, num_rounds: int) -> str:
     stream_path = LOGS_DIR / f"round_{round_num:02d}_{agent.lower()}.jsonl"
     stream_path.write_text("\n".join(raw_events) + "\n")
 
-    # Append to message board and commit
+    # Append to message board and commit with descriptive message
     if output:
         append_to_board(agent, round_num, output)
-    changed = _git_commit(f"[{agent}] Round {round_num}")
+    # Use first line of agent output as commit summary
+    first_line = output.split("\n")[0][:72] if output else "no output"
+    commit_msg = f"[{agent}] R{round_num}: {first_line}"
+    changed = _git_commit(commit_msg)
     log(f"{color}  {'changes committed' if changed else '(no file changes)'}{RESET}\n")
 
     return output
@@ -565,6 +585,20 @@ def main():
         )
 
     try:
+        # Planning round: agents discuss priorities before anyone writes code
+        if args.start_round <= 0:
+            pass  # skip planning if resuming past it
+        else:
+            log(f"\n{BOLD}{'#' * 60}")
+            log(f"  PLANNING ROUND — no code, just coordination")
+            log(f"  Active agents: {', '.join(active_agents)}")
+            log(f"{'#' * 60}{RESET}")
+
+            for agent in active_agents:
+                run_agent(agent, 0, args.rounds, planning=True)
+
+            log(f"\n{DIM}Planning round complete.{RESET}")
+
         for round_num in range(args.start_round, args.rounds + 1):
             log(f"\n{BOLD}{'#' * 60}")
             log(f"  ROUND {round_num} of {args.rounds}")
