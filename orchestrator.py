@@ -13,9 +13,18 @@ Usage:
 import subprocess
 import sys
 import time
+import json
 import argparse
 from pathlib import Path
 from datetime import datetime
+
+
+SETTINGS_FILE = Path(__file__).parent / "sandbox-settings.json"
+
+
+def log(msg: str = ""):
+    """Print and immediately flush so output is visible in real time."""
+    print(msg, flush=True)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -77,33 +86,35 @@ compelling reason explained on the message board.
 # Per-agent role prompts
 # ---------------------------------------------------------------------------
 
-# Each agent: role_prompt, model, effort, allowed_tools
-# allowed_tools restricts what each agent can do — this is the real sandbox.
-# Bash is filtered to only allow python/pip commands where needed.
+# Each agent: role_prompt, model, effort, disallowed_tools
+# disallowed_tools blocks specific tools via --disallowedTools (works with --dangerously-skip-permissions).
+# max_budget caps per-turn spend to prevent any agent from going overboard.
+MAX_BUDGET_PER_TURN = "0.10"   # USD — ~10-15 tool uses on sonnet
 AGENT_CONFIGS = {
     "Architect": {
         "model": "sonnet",
         "effort": "high",
-        "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep"],
+        "disallowed_tools": ["Bash", "NotebookEdit", "WebFetch", "WebSearch"],
         "role_prompt": """\
 You are the **Architect**.
 
 Priorities:
-- Design the project structure and file layout.
-- Write a short ARCHITECTURE.md when the project is new.
-- Define interfaces/contracts between engine and gameplay code.
-- Make technology decisions (rendering approach, data structures, etc.).
+- Write ARCHITECTURE.md describing the project structure, module responsibilities, \
+and key design decisions (raycasting approach, rendering strategy, etc.).
+- Define interfaces and contracts between engine and gameplay code — describe \
+function signatures, data structures, and module boundaries in the architecture doc.
 - As the project matures, review the overall design and propose improvements.
 
-You may write code, but focus on structure, skeleton files, and interfaces \
-rather than deep implementation.\
+IMPORTANT: Do NOT create implementation files or skeleton code. Your teammates \
+will write their own code based on your architecture doc. Your deliverable is \
+ARCHITECTURE.md (and updates to it), not .py files. Trust your team.\
 """,
     },
 
     "Engine": {
         "model": "sonnet",
         "effort": "high",
-        "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash(python3:*)"],
+        "disallowed_tools": ["NotebookEdit", "WebFetch", "WebSearch"],
         "role_prompt": """\
 You are the **Engine Developer**.
 
@@ -121,7 +132,7 @@ Write performant Python. Consider using curses or direct ANSI escape codes.\
     "Gameplay": {
         "model": "sonnet",
         "effort": "medium",
-        "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash(python3:*)"],
+        "disallowed_tools": ["NotebookEdit", "WebFetch", "WebSearch"],
         "role_prompt": """\
 You are the **Gameplay Developer**.
 
@@ -139,7 +150,7 @@ Build on top of the engine — use the interfaces provided by the Engine dev.\
     "Reviewer": {
         "model": "sonnet",
         "effort": "medium",
-        "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash(python3:*)", "Bash(ls:*)"],
+        "disallowed_tools": ["NotebookEdit", "WebFetch", "WebSearch"],
         "role_prompt": """\
 You are the **Reviewer / QA**.
 
@@ -215,7 +226,7 @@ def setup(resume: bool):
         board.write_text("# Message Board\n\nTeam communication log.\n\n---\n\n")
         _git_commit("Initialize workspace")
     elif not resume:
-        print(f"{BOLD}Workspace already exists.{RESET} Use --resume to continue, "
+        log(f"{BOLD}Workspace already exists.{RESET} Use --resume to continue, "
               "or delete workspace/ to start fresh.")
         sys.exit(1)
 
@@ -260,12 +271,12 @@ def append_to_board(agent: str, round_num: int, text: str):
 
 
 def build_prompt(agent: str, round_num: int, num_rounds: int) -> str:
-    tree = workspace_tree()
-    log  = recent_git_log()
+    tree    = workspace_tree()
+    gitlog  = recent_git_log()
     return (
         f"## Status — Round {round_num} of {num_rounds}\n\n"
         f"### Workspace files\n{tree}\n\n"
-        f"### Recent git history\n{log}\n\n---\n\n"
+        f"### Recent git history\n{gitlog}\n\n---\n\n"
         f"Do your work for this turn. Start by reading MESSAGE_BOARD.md and any "
         f"relevant source files, then make your contribution.\n\n"
         f"When finished, write a short summary of what you did and any notes "
@@ -276,56 +287,116 @@ def build_prompt(agent: str, round_num: int, num_rounds: int) -> str:
 # Agent runner
 # ---------------------------------------------------------------------------
 
+def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
+                 disallowed_tools: list[str], color: str, timeout: int = 600) -> tuple[str, float]:
+    """
+    Run a claude -p subprocess with stream-json output for real-time progress.
+    Prompt is piped via stdin to avoid arg-length issues.
+    Returns (final_text_output, elapsed_seconds).
+    """
+    cmd = [
+        "claude",
+        "-p",                                   # read prompt from stdin
+        "--system-prompt", system_prompt,
+        "--model", model,
+        "--effort", effort,
+        "--output-format", "stream-json",        # real-time event stream
+        "--verbose",                              # required for stream-json
+        "--no-session-persistence",
+        "--settings", str(SETTINGS_FILE),        # bubblewrap sandbox
+        "--max-budget-usd", MAX_BUDGET_PER_TURN,
+        "--dangerously-skip-permissions",
+        "--disallowedTools", ",".join(disallowed_tools),
+    ]
+
+    start = time.time()
+    result_text = ""
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,                           # line-buffered
+            cwd=str(WORKSPACE),
+        )
+
+        # Send prompt via stdin and close
+        proc.stdin.write(prompt)
+        proc.stdin.close()
+
+        # Read stream-json events line by line (readline avoids read-ahead buffering)
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            etype = event.get("type", "")
+
+            # Show tool use and text activity in real time
+            if etype == "assistant" and "message" in event:
+                msg = event["message"]
+                content = msg.get("content", [])
+                for block in content:
+                    btype = block.get("type", "")
+                    if btype == "tool_use":
+                        tool = block.get("name", "?")
+                        log(f"{color}    [{tool}]{RESET}")
+                    elif btype == "text":
+                        # Don't print text chunks — they'll be in the result
+                        pass
+
+            # Final result
+            if etype == "result":
+                result_text = event.get("result", "")
+
+        proc.wait(timeout=timeout)
+
+        if proc.returncode != 0 and not result_text:
+            stderr = proc.stderr.read().strip()
+            result_text = f"(agent exited with code {proc.returncode})\n{stderr}"
+
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        result_text = "(agent timed out)"
+    except Exception as e:
+        result_text = f"(error: {e})"
+
+    elapsed = time.time() - start
+    return result_text.strip(), elapsed
+
+
 def run_agent(agent: str, round_num: int, num_rounds: int) -> str:
-    cfg           = AGENT_CONFIGS.get(agent, {})
-    model         = cfg.get("model", "sonnet")
-    effort        = cfg.get("effort", "medium")
-    allowed_tools = cfg.get("allowed_tools", ["Read", "Write", "Edit", "Glob", "Grep"])
+    cfg              = AGENT_CONFIGS.get(agent, {})
+    model            = cfg.get("model", "sonnet")
+    effort           = cfg.get("effort", "medium")
+    disallowed_tools = cfg.get("disallowed_tools", [])
     system = SHARED_CONTEXT + "\n\n" + AGENT_ROLES[agent]
     prompt = build_prompt(agent, round_num, num_rounds)
     color  = COLORS.get(agent, "")
 
-    tools_display = " ".join(t.split("(")[0] for t in allowed_tools)
-    print(f"\n{color}{'=' * 60}")
-    print(f"  {agent} — Round {round_num}  ({model}, effort={effort})")
-    print(f"  tools: {tools_display}")
-    print(f"{'=' * 60}{RESET}\n")
+    blocked = ",".join(disallowed_tools) if disallowed_tools else "(none)"
+    log(f"\n{color}{'=' * 60}")
+    log(f"  {agent} — Round {round_num}  ({model}, effort={effort})")
+    log(f"  blocked tools: {blocked}")
+    log(f"{'=' * 60}{RESET}")
 
-    cmd = [
-        "claude",
-        "-p", prompt,
-        "--system-prompt", system,
-        "--model", model,
-        "--effort", effort,
-        "--dangerously-skip-permissions",
-        "--no-session-persistence",
-        "--output-format", "text",
-        "--allowedTools", *allowed_tools,
-    ]
+    output, elapsed = _run_claude(prompt, system, model, effort, disallowed_tools, color)
 
-    start = time.time()
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=str(WORKSPACE),
-            timeout=600,
-        )
-        output = result.stdout.strip()
-        if result.returncode != 0 and not output:
-            output = f"(agent exited with code {result.returncode})\n{result.stderr.strip()}"
-    except subprocess.TimeoutExpired:
-        output = "(agent timed out after 10 minutes)"
-
-    elapsed = time.time() - start
-
-    # Display (truncated) output
+    # Show truncated output
     display = output[:3000] + "\n..." if len(output) > 3000 else output
-    print(f"{DIM}{'- ' * 30}{RESET}")
-    print(display)
-    print(f"{DIM}{'- ' * 30}")
-    print(f"  Completed in {elapsed:.1f}s{RESET}")
+    if display:
+        log(f"{DIM}{display}{RESET}")
+    log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
 
     # Log full output
     log_path = LOGS_DIR / f"round_{round_num:02d}_{agent.lower()}.md"
@@ -335,7 +406,7 @@ def run_agent(agent: str, round_num: int, num_rounds: int) -> str:
     if output:
         append_to_board(agent, round_num, output)
     changed = _git_commit(f"[{agent}] Round {round_num}")
-    print(f"{color}  {'changes committed' if changed else '(no file changes)'}{RESET}\n")
+    log(f"{color}  {'changes committed' if changed else '(no file changes)'}{RESET}\n")
 
     return output
 
@@ -346,51 +417,29 @@ def run_agent(agent: str, round_num: int, num_rounds: int) -> str:
 def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str]):
     """Run the Facilitator meta-agent between rounds."""
     color = COLORS["Facilitator"]
-    print(f"\n{color}{'=' * 60}")
-    print(f"  Facilitator — after Round {round_num}")
-    print(f"{'=' * 60}{RESET}\n")
+    log(f"\n{color}{'=' * 60}")
+    log(f"  Facilitator — after Round {round_num}  (haiku, effort=high)")
+    log(f"{'=' * 60}{RESET}")
 
-    tree = workspace_tree()
-    log  = recent_git_log()
+    tree   = workspace_tree()
+    gitlog = recent_git_log()
     prompt = (
         f"## Team Status — End of Round {round_num} of {num_rounds}\n\n"
         f"Active agents: {', '.join(active_agents)}\n\n"
         f"### Workspace files\n{tree}\n\n"
-        f"### Recent git history\n{log}\n\n---\n\n"
+        f"### Recent git history\n{gitlog}\n\n---\n\n"
         f"Review the message board and codebase. Write TEAM_DIRECTIVES.md with "
         f"guidance for the next round. If needed, recruit or retire agents."
     )
 
-    cmd = [
-        "claude",
-        "-p", prompt,
-        "--system-prompt", FACILITATOR_SYSTEM,
-        "--model", "haiku",
-        "--effort", "high",
-        "--dangerously-skip-permissions",
-        "--no-session-persistence",
-        "--output-format", "text",
-        "--allowedTools", "Read", "Write", "Edit", "Glob", "Grep",
-    ]
+    blocked = ["Bash", "NotebookEdit", "WebFetch", "WebSearch"]
+    output, elapsed = _run_claude(prompt, FACILITATOR_SYSTEM, "haiku", "high",
+                                   blocked, color, timeout=300)
 
-    print(f"{DIM}  (haiku, effort=high){RESET}")
-
-    start = time.time()
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True,
-            cwd=str(WORKSPACE), timeout=300,
-        )
-        output = result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        output = "(facilitator timed out)"
-
-    elapsed = time.time() - start
-    display = output[:2000] + "\n..." if len(output) > 2000 else output
-    print(f"{DIM}{'- ' * 30}{RESET}")
-    print(display)
-    print(f"{DIM}{'- ' * 30}")
-    print(f"  Completed in {elapsed:.1f}s{RESET}")
+    if output:
+        display = output[:2000] + "\n..." if len(output) > 2000 else output
+        log(f"{DIM}{display}{RESET}")
+    log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
 
     log_path = LOGS_DIR / f"round_{round_num:02d}_facilitator.md"
     log_path.write_text(f"# Facilitator — after Round {round_num}\n\n{output}\n")
@@ -423,11 +472,11 @@ def check_for_new_agents(active_agents: list[str]) -> list[str]:
             }
             COLORS.setdefault(name, "\033[1;36m")  # cyan for dynamic agents
             active_agents.append(name)
-            print(f"\n{BOLD}  + New agent recruited: {name}{RESET}")
+            log(f"\n{BOLD}  + New agent recruited: {name}{RESET}")
         new_agent_file.unlink()
         _git_commit(f"Recruited new agent: {name}")
     except (json.JSONDecodeError, KeyError) as e:
-        print(f"{DIM}  (invalid NEW_AGENT.json: {e}){RESET}")
+        log(f"{DIM}  (invalid NEW_AGENT.json: {e}){RESET}")
 
     return active_agents
 
@@ -446,11 +495,11 @@ def check_for_retirements(active_agents: list[str]) -> list[str]:
 
         if name in active_agents:
             active_agents.remove(name)
-            print(f"\n{BOLD}  - Agent retired: {name} ({reason}){RESET}")
+            log(f"\n{BOLD}  - Agent retired: {name} ({reason}){RESET}")
         retire_file.unlink()
         _git_commit(f"Retired agent: {name} — {reason}")
     except (json.JSONDecodeError, KeyError) as e:
-        print(f"{DIM}  (invalid RETIRE_AGENT.json: {e}){RESET}")
+        log(f"{DIM}  (invalid RETIRE_AGENT.json: {e}){RESET}")
 
     return active_agents
 
@@ -475,7 +524,7 @@ def main():
     active_agents = list(args.agents)
     use_facilitator = not args.no_facilitator
 
-    print(f"""{BOLD}
+    log(f"""{BOLD}
  ╔═══════════════════════════════════════════════════════════╗
  ║   Multi-Agent Emergent Behavior Experiment               ║
  ║   Project: 3D Terminal FPS                               ║
@@ -500,15 +549,15 @@ def main():
 
     try:
         for round_num in range(args.start_round, args.rounds + 1):
-            print(f"\n{BOLD}{'#' * 60}")
-            print(f"  ROUND {round_num} of {args.rounds}")
-            print(f"  Active agents: {', '.join(active_agents)}")
-            print(f"{'#' * 60}{RESET}")
+            log(f"\n{BOLD}{'#' * 60}")
+            log(f"  ROUND {round_num} of {args.rounds}")
+            log(f"  Active agents: {', '.join(active_agents)}")
+            log(f"{'#' * 60}{RESET}")
 
             for agent in active_agents:
                 run_agent(agent, round_num, args.rounds)
 
-            print(f"\n{DIM}Round {round_num} complete.{RESET}")
+            log(f"\n{DIM}Round {round_num} complete.{RESET}")
 
             # Run Facilitator between rounds
             if use_facilitator and round_num % args.facilitator_every == 0:
@@ -517,10 +566,10 @@ def main():
                 active_agents = check_for_retirements(active_agents)
 
     except KeyboardInterrupt:
-        print(f"\n\n{BOLD}Experiment stopped (Ctrl-C).{RESET}")
+        log(f"\n\n{BOLD}Experiment stopped (Ctrl-C).{RESET}")
 
     # Summary
-    print(f"""
+    log(f"""
 {BOLD}Experiment complete.{RESET}
   Workspace : {WORKSPACE}
   Logs      : {LOGS_DIR}

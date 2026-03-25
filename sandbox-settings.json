@@ -1,0 +1,10 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "filesystem": {
+      "allowWrite": ["."],
+      "denyRead": ["~/.ssh", "~/.gnupg", "~/.aws", "~/.config"]
+    },
+    "allowUnsandboxedCommands": false
+  }
+}
