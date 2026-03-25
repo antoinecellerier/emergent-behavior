@@ -180,36 +180,44 @@ AGENTS = list(AGENT_ROLES.keys())
 # ---------------------------------------------------------------------------
 
 FACILITATOR_SYSTEM = """\
-You are the **Facilitator** — a meta-agent that oversees a team of AI agents \
+You are the **Facilitator** — a meta-agent that observes a team of AI agents \
 building a 3D terminal FPS game.
 
-You do NOT write game code. Instead, you:
+Your role is strictly about COORDINATION, not decision-making. The team owns \
+all design and implementation decisions. You help them collaborate better.
 
-1. **Evaluate team dynamics** — read MESSAGE_BOARD.md and the git log to \
-understand what each agent accomplished and where they are stuck.
+## What you DO:
 
-2. **Adjust agent focus** — write a file called TEAM_DIRECTIVES.md with \
-updated priorities or focus areas for each agent in the next round. Agents \
-will read this file. Be specific: "Engine: the raycaster has a fish-eye \
-distortion bug on line 45 of engine.py — fix that before adding textures."
+1. **Observe team dynamics** — read MESSAGE_BOARD.md to understand what each \
+agent accomplished, where they're stuck, and how they're communicating.
 
-3. **Recruit specialists** — if the team has a clear gap (e.g., nobody is \
-handling sound, or the map design needs dedicated attention), you may add a \
-new agent by writing a JSON file to the workspace:
+2. **Flag communication gaps** — write TEAM_DIRECTIVES.md noting issues like: \
+"Engine and Gameplay seem to be implementing collision differently — you \
+should align." or "Nobody has addressed the Reviewer's bug report from Round 1."
+
+3. **Surface unresolved disagreements** — if agents proposed conflicting \
+approaches, note this so they can resolve it. Do NOT pick a side.
+
+4. **Recruit specialists** — if the team identifies a gap on the message board \
+that no current agent can fill, you may add a new agent:
    File: NEW_AGENT.json
    Format: {"name": "AgentName", "role_prompt": "You are the ... agent. ..."}
-   The orchestrator will pick this up and add the agent to the next round.
-   Only recruit when there is a genuine, specific need — not speculatively.
+   Only recruit when agents themselves have flagged the need.
 
-4. **Retire agents** — if an agent's role is complete (e.g., architecture is \
-settled and the Architect has nothing to do), write:
+5. **Retire agents** — if an agent's role is genuinely complete and they said so:
    File: RETIRE_AGENT.json
    Format: {"name": "AgentName", "reason": "..."}
 
-5. **Resolve conflicts** — if agents disagree on the message board, make a \
-decision in TEAM_DIRECTIVES.md and explain your reasoning.
+## What you must NOT do:
 
-Be concise and actionable. Focus on unblocking the team.\
+- Do NOT write code or pseudo-code
+- Do NOT assign specific tasks or features to agents
+- Do NOT make design decisions (architecture, algorithms, priorities)
+- Do NOT estimate effort or set deadlines
+- Do NOT write implementation plans or checklists
+
+The agents are capable. Your job is to help them see what they might be \
+missing in their communication, not to manage them.\
 """
 
 # ---------------------------------------------------------------------------
@@ -444,9 +452,15 @@ def run_agent(agent: str, round_num: int, num_rounds: int, *,
     log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
 
     # Log full output and raw JSON stream
-    log_path = LOGS_DIR / f"round_{round_num:02d}_{agent.lower()}.md"
-    log_path.write_text(f"# {agent} — Round {round_num}\n\n{output}\n")
-    stream_path = LOGS_DIR / f"round_{round_num:02d}_{agent.lower()}.jsonl"
+    if planning:
+        tag = f"plan_{plan_round:02d}"
+        label = f"Planning {plan_round}/{plan_total}"
+    else:
+        tag = f"round_{round_num:02d}"
+        label = f"Round {round_num}"
+    log_path = LOGS_DIR / f"{tag}_{agent.lower()}.md"
+    log_path.write_text(f"# {agent} — {label}\n\n{output}\n")
+    stream_path = LOGS_DIR / f"{tag}_{agent.lower()}.jsonl"
     stream_path.write_text("\n".join(raw_events) + "\n")
 
     # Append to message board and commit with descriptive message
@@ -464,22 +478,33 @@ def run_agent(agent: str, round_num: int, num_rounds: int, *,
 # Facilitator & dynamic agent management
 # ---------------------------------------------------------------------------
 
-def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str]):
+def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
+                     *, plan_round: int | None = None):
     """Run the Facilitator meta-agent between rounds."""
     color = COLORS["Facilitator"]
+
+    if plan_round is not None:
+        phase_label = f"after Planning {plan_round}"
+        log_tag = f"plan_{plan_round:02d}"
+    else:
+        phase_label = f"after Round {round_num}"
+        log_tag = f"round_{round_num:02d}"
+
     log(f"\n{color}{'=' * 60}")
-    log(f"  Facilitator — after Round {round_num}  (haiku, effort=high)")
+    log(f"  Facilitator — {phase_label}  (haiku, effort=high)")
     log(f"{'=' * 60}{RESET}")
 
     tree   = workspace_tree()
     gitlog = recent_git_log()
     prompt = (
-        f"## Team Status — End of Round {round_num} of {num_rounds}\n\n"
+        f"## Team Status — {phase_label} (of {num_rounds} total)\n\n"
         f"Active agents: {', '.join(active_agents)}\n\n"
         f"### Workspace files\n{tree}\n\n"
         f"### Recent git history\n{gitlog}\n\n---\n\n"
-        f"Review the message board and codebase. Write TEAM_DIRECTIVES.md with "
-        f"guidance for the next round. If needed, recruit or retire agents."
+        f"Read MESSAGE_BOARD.md. Observe how the team is communicating. "
+        f"Write TEAM_DIRECTIVES.md noting any communication gaps, unresolved "
+        f"disagreements, or things agents seem to be missing. "
+        f"If needed, recruit or retire agents."
     )
 
     blocked = ["Bash", "NotebookEdit", "WebFetch", "WebSearch"]
@@ -491,14 +516,14 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str]):
         log(f"{DIM}{display}{RESET}")
     log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
 
-    log_path = LOGS_DIR / f"round_{round_num:02d}_facilitator.md"
-    log_path.write_text(f"# Facilitator — after Round {round_num}\n\n{output}\n")
-    stream_path = LOGS_DIR / f"round_{round_num:02d}_facilitator.jsonl"
+    log_path = LOGS_DIR / f"{log_tag}_facilitator.md"
+    log_path.write_text(f"# Facilitator — {phase_label}\n\n{output}\n")
+    stream_path = LOGS_DIR / f"{log_tag}_facilitator.jsonl"
     stream_path.write_text("\n".join(raw_events) + "\n")
 
     if output:
         append_to_board("Facilitator", round_num, output)
-    _git_commit(f"[Facilitator] after Round {round_num}")
+    _git_commit(f"[Facilitator] {phase_label}")
 
     return output
 
@@ -618,6 +643,10 @@ def main():
                               plan_round=plan_round, plan_total=args.planning_rounds)
 
                 log(f"\n{DIM}Planning round {plan_round} complete.{RESET}")
+
+                # Facilitator between planning rounds (not after the last one)
+                if use_facilitator and plan_round < args.planning_rounds:
+                    run_facilitator(0, args.rounds, active_agents, plan_round=plan_round)
 
         for round_num in range(args.start_round, args.rounds + 1):
             log(f"\n{BOLD}{'#' * 60}")
