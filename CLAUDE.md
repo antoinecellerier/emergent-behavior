@@ -18,10 +18,13 @@ An orchestrator (`orchestrator.py`) that spawns multiple Claude Code agents (`cl
 - Targeted agent test: `python3 test_real_agent.py`
 
 ## Key files
-- `orchestrator.py` — main experiment runner
+- `orchestrator.py` — main experiment runner (setup + main loop)
+- `prompts.py` — all agent and facilitator prompts (most frequently edited)
+- `agents.py` — claude subprocess, streaming, git helpers, agent turns
+- `board.py` — message board append/archive logic
 - `test_runner.py` — pytest suite for CLI integration (stream-json parsing, tool restriction, sandbox)
 - `test_real_agent.py` — reproduces real agent conditions (long prompts, tool use, result capture)
-- `test_sandbox.py` — 26 pytest tests for the sandbox hook (read/write blocking, path traversal, archival)
+- `test_sandbox.py` — 27 pytest tests for the sandbox hook (read/write blocking, path traversal, archival)
 - `sandbox-settings.json` — bubblewrap filesystem isolation config
 - `.claude/hooks/sandbox-read.sh` — default-deny file access hook
 - `workspace/` — agents' shared workspace (gitignored, has its own git repo)
