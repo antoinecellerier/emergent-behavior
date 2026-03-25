@@ -611,7 +611,7 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
         log_tag = f"round_{round_num:02d}"
 
     log(f"\n{color}{'=' * 60}")
-    log(f"  Facilitator — {phase_label}  (haiku, effort=high)")
+    log(f"  Facilitator — {phase_label}  (sonnet, effort=medium)")
     log(f"{'=' * 60}{RESET}")
 
     tree   = workspace_tree()
@@ -628,7 +628,7 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
     )
 
     blocked = ["Bash", "NotebookEdit", "WebFetch", "WebSearch"]
-    output, elapsed, raw_events = _run_claude(prompt, FACILITATOR_SYSTEM, "haiku", "high",
+    output, elapsed, raw_events = _run_claude(prompt, FACILITATOR_SYSTEM, "sonnet", "medium",
                                                blocked, color, timeout=300)
 
     if output:
