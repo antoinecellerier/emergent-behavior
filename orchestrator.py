@@ -15,9 +15,24 @@ import sys
 import os
 import time
 import json
+import signal
 import argparse
 from pathlib import Path
 from datetime import datetime
+
+
+# Graceful shutdown: first Ctrl-C sets flag, second Ctrl-C force-kills
+_shutdown_requested = False
+
+def _handle_sigint(signum, frame):
+    global _shutdown_requested
+    if _shutdown_requested:
+        log(f"\n{BOLD}Force quit.{RESET}")
+        sys.exit(1)
+    _shutdown_requested = True
+    log(f"\n{BOLD}Shutdown requested — finishing current agent, then stopping.{RESET}")
+
+signal.signal(signal.SIGINT, _handle_sigint)
 
 
 SANDBOX_SETTINGS_TEMPLATE = Path(__file__).parent / "sandbox-settings.json"
@@ -772,32 +787,46 @@ def main():
                 for agent in active_agents:
                     run_agent(agent, 0, args.rounds, planning=True,
                               plan_round=plan_round, plan_total=args.planning_rounds)
+                    if _shutdown_requested:
+                        break
 
                 log(f"\n{DIM}Planning round {plan_round} complete.{RESET}")
+
+                if _shutdown_requested:
+                    break
 
                 # Facilitator between planning rounds (not after the last one)
                 if use_facilitator and plan_round < args.planning_rounds:
                     run_facilitator(0, args.rounds, active_agents, plan_round=plan_round)
 
-        for round_num in range(args.start_round, args.rounds + 1):
-            log(f"\n{BOLD}{'#' * 60}")
-            log(f"  ROUND {round_num} of {args.rounds}")
-            log(f"  Active agents: {', '.join(active_agents)}")
-            log(f"{'#' * 60}{RESET}")
+        if not _shutdown_requested:
+            for round_num in range(args.start_round, args.rounds + 1):
+                log(f"\n{BOLD}{'#' * 60}")
+                log(f"  ROUND {round_num} of {args.rounds}")
+                log(f"  Active agents: {', '.join(active_agents)}")
+                log(f"{'#' * 60}{RESET}")
 
-            for agent in active_agents:
-                run_agent(agent, round_num, args.rounds)
+                for agent in active_agents:
+                    run_agent(agent, round_num, args.rounds)
+                    if _shutdown_requested:
+                        break
 
-            log(f"\n{DIM}Round {round_num} complete.{RESET}")
+                log(f"\n{DIM}Round {round_num} complete.{RESET}")
 
-            # Run Facilitator between rounds
-            if use_facilitator and round_num % args.facilitator_every == 0:
-                run_facilitator(round_num, args.rounds, active_agents)
-                active_agents = check_for_new_agents(active_agents)
-                active_agents = check_for_retirements(active_agents)
+                if _shutdown_requested:
+                    break
 
-    except KeyboardInterrupt:
-        log(f"\n\n{BOLD}Experiment stopped (Ctrl-C).{RESET}")
+                # Run Facilitator between rounds
+                if use_facilitator and round_num % args.facilitator_every == 0:
+                    run_facilitator(round_num, args.rounds, active_agents)
+                    active_agents = check_for_new_agents(active_agents)
+                    active_agents = check_for_retirements(active_agents)
+
+        if _shutdown_requested:
+            log(f"\n{BOLD}Experiment stopped after current agent finished.{RESET}")
+
+    except Exception as e:
+        log(f"\n{BOLD}Experiment error: {e}{RESET}")
 
     # Summary
     log(f"""
