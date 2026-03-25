@@ -30,8 +30,9 @@ def log(msg: str = ""):
 # Configuration
 # ---------------------------------------------------------------------------
 
-WORKSPACE = Path(__file__).parent / "workspace"
-LOGS_DIR = Path(__file__).parent / "logs"
+RUNS_DIR  = Path(__file__).parent / "runs"
+WORKSPACE = None  # set in main() based on run directory
+LOGS_DIR  = None  # set in main() based on run directory
 
 COLORS = {
     "Architect":   "\033[1;34m",
@@ -632,7 +633,8 @@ def check_for_retirements(active_agents: list[str]) -> list[str]:
 def main():
     parser = argparse.ArgumentParser(description="Multi-agent emergent-behavior experiment")
     parser.add_argument("--rounds", type=int, default=10, help="Number of rounds (default: 10)")
-    parser.add_argument("--resume", action="store_true", help="Resume from existing workspace")
+    parser.add_argument("--resume", type=str, metavar="RUN_DIR",
+                        help="Resume a previous run (pass the run directory name under runs/)")
     parser.add_argument("--start-round", type=int, default=1, help="Round to start from (for resume)")
     parser.add_argument("--agents", nargs="+", choices=AGENTS, default=AGENTS,
                         help="Which agents to include")
@@ -644,6 +646,25 @@ def main():
                         help="Run Facilitator every N rounds (default: 2)")
     args = parser.parse_args()
 
+    # Set up run directory
+    global WORKSPACE, LOGS_DIR
+    RUNS_DIR.mkdir(exist_ok=True)
+
+    if args.resume:
+        run_dir = RUNS_DIR / args.resume
+        if not run_dir.exists():
+            log(f"{BOLD}Run directory not found: {run_dir}{RESET}")
+            sys.exit(1)
+        resume = True
+    else:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_dir = RUNS_DIR / ts
+        run_dir.mkdir()
+        resume = False
+
+    WORKSPACE = run_dir / "workspace"
+    LOGS_DIR  = run_dir / "logs"
+
     active_agents = list(args.agents)
     use_facilitator = not args.no_facilitator
 
@@ -653,6 +674,7 @@ def main():
  ║   Project: 3D Terminal FPS                               ║
  ╚═══════════════════════════════════════════════════════════╝{RESET}
 
+  Run         : {run_dir.name}
   Agents      : {', '.join(active_agents)}
   Planning    : {args.planning_rounds} round{'s' if args.planning_rounds != 1 else ''}{' (skipped)' if args.planning_rounds == 0 else ''}
   Facilitator : {'every ' + str(args.facilitator_every) + ' rounds' if use_facilitator else 'disabled'}
@@ -660,7 +682,7 @@ def main():
   Workspace   : {WORKSPACE}
 """)
 
-    setup(resume=args.resume)
+    setup(resume=resume)
 
     # Inject TEAM_DIRECTIVES.md awareness into shared context if facilitator is on
     if use_facilitator:
@@ -715,10 +737,12 @@ def main():
     # Summary
     log(f"""
 {BOLD}Experiment complete.{RESET}
+  Run       : {run_dir.name}
   Workspace : {WORKSPACE}
   Logs      : {LOGS_DIR}
   Git log   : cd {WORKSPACE} && git log --oneline
   Run game  : cd {WORKSPACE} && python3 main.py
+  Resume    : python3 orchestrator.py --resume {run_dir.name} --start-round N --rounds M
 """)
 
 

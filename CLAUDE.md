@@ -10,8 +10,9 @@ An orchestrator (`orchestrator.py`) that spawns multiple Claude Code agents (`cl
 - pytest installed via apt: `python3 -m pytest test_runner.py -v`
 
 ## Commands
-- Run experiment: `python3 orchestrator.py --rounds 3`
-- Resume: `python3 orchestrator.py --rounds 3 --resume --start-round N`
+- New experiment: `python3 orchestrator.py --rounds 3` (creates `runs/<timestamp>/`)
+- Resume: `python3 orchestrator.py --resume <run_dir_name> --start-round N --rounds M`
+- List runs: `ls runs/`
 - Run all tests: `python3 -m pytest test_runner.py -v`
 - Run single test: `python3 -m pytest test_runner.py -v -k "test_name"`
 - Targeted agent test: `python3 test_real_agent.py`
@@ -29,8 +30,8 @@ An orchestrator (`orchestrator.py`) that spawns multiple Claude Code agents (`cl
 ### Test before running experiments
 IMPORTANT: Always validate changes with targeted cheap tests (haiku, low effort) before running expensive multi-agent experiments. Write a pytest test that reproduces the exact conditions, verify it passes, then run the experiment. Never re-run the full test suite to check one hypothesis — use `-k` to select the specific test.
 
-### Don't destroy workspace data
-NEVER `rm -rf workspace/` without asking first. Previous experiment runs contain valuable results. Use `--resume` to continue, or archive the workspace before starting fresh.
+### Don't destroy run data
+Each experiment creates a timestamped directory under `runs/`. NEVER delete run directories without asking. Use `--resume <dir>` to continue a previous run.
 
 ### Iterate on prompts, not machinery
 Most behavior changes come from prompt edits, not new code. Prefer adjusting system prompts and shared context over adding orchestrator features. Keep the orchestrator simple.
