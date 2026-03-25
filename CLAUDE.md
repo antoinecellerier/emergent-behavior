@@ -6,7 +6,7 @@ An orchestrator (`orchestrator.py`) that spawns multiple Claude Code agents (`cl
 ## Environment
 - `python3` (not `python`)
 - No `sudo` access
-- `bubblewrap` available for sandboxing, `socat` is not installed
+- `bubblewrap` and `socat` available for sandboxing
 - pytest installed via apt: `python3 -m pytest test_runner.py -v`
 
 ## Commands
