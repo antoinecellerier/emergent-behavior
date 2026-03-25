@@ -240,10 +240,10 @@ write RETIRE_AGENT.json: {"name": "...", "reason": "..."}
 Only act on explicit agent requests — never on your own judgment.
 
 ## You must NOT:
-- Write TEAM_DIRECTIVES.md or any directive/guidance file
 - Write code, pseudo-code, or implementation details
 - Assign tasks, set priorities, or label severity
 - Make design decisions or recommendations
+- Create any files other than MESSAGE_BOARD_SUMMARY.md and agent roster JSONs
 - Explore parent directories, .git, or log files\
 """
 
