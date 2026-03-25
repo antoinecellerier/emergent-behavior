@@ -309,8 +309,13 @@ def recent_git_log() -> str:
     return result.stdout.strip() or "(no commits yet)"
 
 
-def _archive_message_board():
-    """Append current board to archive, then reset board to header only."""
+def _archive_message_board(keep_round: int):
+    """Archive old messages, keep the current round's messages on the board.
+
+    Messages are formatted as: ### [Agent] Round N — HH:MM:SS
+    Only messages from rounds < keep_round are moved to the archive.
+    """
+    import re
     board = WORKSPACE / "MESSAGE_BOARD.md"
     archive = WORKSPACE / "MESSAGE_BOARD_ARCHIVE.md"
 
@@ -320,17 +325,38 @@ def _archive_message_board():
     content = board.read_text()
     header = "# Message Board\n\nTeam communication log.\n\n---\n\n"
 
-    # Nothing beyond the header — nothing to archive
     if content.strip() == header.strip():
         return
 
-    # Append to archive
-    existing_archive = archive.read_text() if archive.exists() else ""
-    archive.write_text(existing_archive + content + "\n")
+    # Split into individual entries on the ### [...] header pattern
+    entry_pattern = re.compile(r'(### \[.+?\] Round \d+.*?)(?=### \[|\Z)', re.DOTALL)
+    entries = entry_pattern.findall(content)
 
-    # Reset board
-    board.write_text(header)
-    log(f"{DIM}  (message board archived, board reset){RESET}")
+    if not entries:
+        return
+
+    # Separate old entries from current round entries
+    round_pattern = re.compile(r'### \[.+?\] Round (\d+)')
+    old_entries = []
+    keep_entries = []
+
+    for entry in entries:
+        m = round_pattern.match(entry)
+        if m and int(m.group(1)) < keep_round:
+            old_entries.append(entry)
+        else:
+            keep_entries.append(entry)
+
+    if not old_entries:
+        return  # nothing to archive
+
+    # Append old entries to archive
+    existing_archive = archive.read_text() if archive.exists() else ""
+    archive.write_text(existing_archive + "".join(old_entries) + "\n")
+
+    # Rewrite board with header + current round entries only
+    board.write_text(header + "".join(keep_entries))
+    log(f"{DIM}  (archived {len(old_entries)} old messages, kept {len(keep_entries)} from current round){RESET}")
 
 
 def append_to_board(agent: str, round_num: int, text: str):
@@ -586,8 +612,8 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
     if output:
         append_to_board("Facilitator", round_num, output)
 
-    # Archive the full board and reset to just the header
-    _archive_message_board()
+    # Archive old messages, keep current round's messages at full fidelity
+    _archive_message_board(keep_round=round_num)
 
     _git_commit(f"[Facilitator] {phase_label}")
 

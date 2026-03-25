@@ -163,6 +163,74 @@ class TestEdgeCases:
         assert ok, "Read with no file_path should allow (no path to check)"
 
 
+# --- Message board archival ---
+
+class TestMessageBoardArchival:
+    """Only old round messages get archived; current round stays."""
+
+    def _setup_board(self, tmpdir):
+        """Create a board with messages from rounds 1 and 2."""
+        board = Path(tmpdir) / "MESSAGE_BOARD.md"
+        content = (
+            "# Message Board\n\nTeam communication log.\n\n---\n\n"
+            "### [Architect] Round 1 — 10:00:00\n\nDesigned the architecture.\n\n---\n\n"
+            "### [Engine] Round 1 — 10:05:00\n\nBuilt the raycaster.\n\n---\n\n"
+            "### [Architect] Round 2 — 11:00:00\n\nUpdated ARCHITECTURE.md.\n\n---\n\n"
+            "### [Engine] Round 2 — 11:05:00\n\nFixed rendering bug.\n\n---\n\n"
+        )
+        board.write_text(content)
+        return board
+
+    def test_archives_old_keeps_current(self, tmp_path):
+        """Round 1 messages archived, round 2 messages kept."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent))
+        import orchestrator
+        # Point orchestrator at tmp workspace
+        old_ws = orchestrator.WORKSPACE
+        orchestrator.WORKSPACE = tmp_path
+
+        board = self._setup_board(tmp_path)
+        orchestrator._archive_message_board(keep_round=2)
+
+        board_text = board.read_text()
+        archive_text = (tmp_path / "MESSAGE_BOARD_ARCHIVE.md").read_text()
+
+        # Board should only have round 2 messages
+        assert "Round 1" not in board_text, "Round 1 should be archived"
+        assert "Round 2" in board_text, "Round 2 should stay on board"
+        assert "Updated ARCHITECTURE.md" in board_text
+        assert "Fixed rendering bug" in board_text
+
+        # Archive should have round 1 messages
+        assert "Round 1" in archive_text, "Round 1 should be in archive"
+        assert "Designed the architecture" in archive_text
+        assert "Built the raycaster" in archive_text
+
+        orchestrator.WORKSPACE = old_ws
+
+    def test_nothing_to_archive(self, tmp_path):
+        """If all messages are from current round, nothing gets archived."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent))
+        import orchestrator
+        old_ws = orchestrator.WORKSPACE
+        orchestrator.WORKSPACE = tmp_path
+
+        board = Path(tmp_path) / "MESSAGE_BOARD.md"
+        board.write_text(
+            "# Message Board\n\nTeam communication log.\n\n---\n\n"
+            "### [Architect] Round 1 — 10:00:00\n\nFirst message.\n\n---\n\n"
+        )
+        orchestrator._archive_message_board(keep_round=1)
+
+        # Board unchanged, no archive created
+        assert "First message" in board.read_text()
+        assert not (tmp_path / "MESSAGE_BOARD_ARCHIVE.md").exists()
+
+        orchestrator.WORKSPACE = old_ws
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-v"]))
