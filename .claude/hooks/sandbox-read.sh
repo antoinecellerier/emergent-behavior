@@ -1,5 +1,5 @@
 #!/bin/bash
-# Default-deny read hook: only allow reads within the project directory.
+# Default-deny file access hook: only allow access within allowed paths.
 # Exit 0 = allow, exit 2 = block.
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -7,16 +7,23 @@ PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 hook_input=$(cat)
 tool=$(echo "$hook_input" | jq -r '.tool_name // .tool // empty')
 
-# Only intercept Read, Edit, Glob, Grep
+# Intercept all file-access tools
 case "$tool" in
-  Read|Edit|Glob|Grep) ;;
+  Read|Edit|Write|Glob|Grep) ;;
   *) exit 0 ;;
 esac
 
-# Extract path from tool input
-path=$(echo "$hook_input" | jq -r '.tool_input.file_path // .tool_input.path // .tool_input.pattern // empty')
+# Extract path — different tools use different field names
+case "$tool" in
+  Read|Edit|Write)
+    path=$(echo "$hook_input" | jq -r '.tool_input.file_path // empty') ;;
+  Glob)
+    path=$(echo "$hook_input" | jq -r '.tool_input.path // empty') ;;
+  Grep)
+    path=$(echo "$hook_input" | jq -r '.tool_input.path // empty') ;;
+esac
 
-# If no path, allow (some tools have optional paths)
+# If no path, allow (some tools have optional paths, default to cwd)
 [ -z "$path" ] && exit 0
 
 # Resolve to absolute path
@@ -26,12 +33,12 @@ else
   abs_path="$(pwd)/$path"
 fi
 
-# Normalize (remove .., trailing slashes)
-abs_path=$(realpath -m "$abs_path" 2>/dev/null || echo "$abs_path")
+# Normalize (remove .., trailing slashes) — fail closed if realpath unavailable
+abs_path=$(realpath -m "$abs_path" 2>/dev/null) || exit 2
 
 # Allowed path prefixes
 ALLOWED=(
-  "$PROJECT_DIR"   # project workspace
+  "$PROJECT_DIR"   # project tree (workspace, logs, etc.)
   "/usr"           # system docs, stdlib source, man pages
   "/tmp"           # temp files from agent tests
   "/proc"          # terminal info, system state
@@ -46,5 +53,5 @@ for prefix in "${ALLOWED[@]}"; do
 done
 
 # Block everything else
-echo "Blocked: $tool access to $abs_path (outside project)" >&2
+echo "Blocked: $tool access to $abs_path (outside allowed paths)" >&2
 exit 2

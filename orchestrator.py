@@ -604,9 +604,10 @@ def check_for_new_agents(active_agents: list[str]) -> list[str]:
         if name not in AGENT_ROLES:
             AGENT_ROLES[name] = role_prompt
             AGENT_CONFIGS[name] = {
-                "model": data.get("model", "sonnet"),
-                "effort": data.get("effort", "medium"),
-                "role_prompt": role_prompt,
+                "model": "sonnet",             # ignore model from JSON — always sonnet
+                "effort": "medium",            # ignore effort from JSON — always medium
+                "disallowed_tools": [],        # ALWAYS_BLOCKED applied in run_agent
+                "role_prompt": role_prompt[:2000],  # length-limit the prompt
             }
             COLORS.setdefault(name, "\033[1;36m")  # cyan for dynamic agents
             active_agents.append(name)
