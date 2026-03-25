@@ -5,9 +5,9 @@ Multi-Agent Emergent Behavior Experiment
 Agents collaboratively build a 3D first-person shooter in the terminal.
 
 Usage:
-    python orchestrator.py                  # Run with defaults (10 rounds)
-    python orchestrator.py --rounds 5       # Custom round count
-    python orchestrator.py --resume         # Resume from existing workspace
+    python3 orchestrator.py                  # Run with defaults (10 rounds)
+    python3 orchestrator.py --rounds 5       # Custom round count
+    python3 orchestrator.py --resume         # Resume from existing workspace
 """
 
 import subprocess
@@ -77,8 +77,15 @@ compelling reason explained on the message board.
 # Per-agent role prompts
 # ---------------------------------------------------------------------------
 
-AGENT_ROLES = {
-    "Architect": """\
+# Each agent: role_prompt, model, effort, allowed_tools
+# allowed_tools restricts what each agent can do — this is the real sandbox.
+# Bash is filtered to only allow python/pip commands where needed.
+AGENT_CONFIGS = {
+    "Architect": {
+        "model": "sonnet",
+        "effort": "high",
+        "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep"],
+        "role_prompt": """\
 You are the **Architect**.
 
 Priorities:
@@ -91,8 +98,13 @@ Priorities:
 You may write code, but focus on structure, skeleton files, and interfaces \
 rather than deep implementation.\
 """,
+    },
 
-    "Engine": """\
+    "Engine": {
+        "model": "sonnet",
+        "effort": "high",
+        "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash(python3:*)"],
+        "role_prompt": """\
 You are the **Engine Developer**.
 
 Priorities:
@@ -104,8 +116,13 @@ Priorities:
 
 Write performant Python. Consider using curses or direct ANSI escape codes.\
 """,
+    },
 
-    "Gameplay": """\
+    "Gameplay": {
+        "model": "sonnet",
+        "effort": "medium",
+        "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash(python3:*)"],
+        "role_prompt": """\
 You are the **Gameplay Developer**.
 
 Priorities:
@@ -117,20 +134,29 @@ Priorities:
 
 Build on top of the engine — use the interfaces provided by the Engine dev.\
 """,
+    },
 
-    "Reviewer": """\
+    "Reviewer": {
+        "model": "sonnet",
+        "effort": "medium",
+        "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash(python3:*)", "Bash(ls:*)"],
+        "role_prompt": """\
 You are the **Reviewer / QA**.
 
 Priorities:
 - Read through the codebase and check for bugs or integration issues.
-- Try to run the game (python main.py or similar) and report results.
+- Try to run the game (python3 main.py or similar) and report results.
 - Fix small bugs you find — but always note them on the message board.
 - Suggest concrete, actionable improvements with code snippets.
 - Ensure the code stays consistent and well-organised.
 
 Be constructive and specific. Prefer fixing over just reporting.\
 """,
+    },
 }
+
+# Backwards-compat: keep a flat role-prompt dict for run_agent
+AGENT_ROLES = {name: cfg["role_prompt"] for name, cfg in AGENT_CONFIGS.items()}
 
 AGENTS = list(AGENT_ROLES.keys())
 
@@ -251,21 +277,30 @@ def build_prompt(agent: str, round_num: int, num_rounds: int) -> str:
 # ---------------------------------------------------------------------------
 
 def run_agent(agent: str, round_num: int, num_rounds: int) -> str:
+    cfg           = AGENT_CONFIGS.get(agent, {})
+    model         = cfg.get("model", "sonnet")
+    effort        = cfg.get("effort", "medium")
+    allowed_tools = cfg.get("allowed_tools", ["Read", "Write", "Edit", "Glob", "Grep"])
     system = SHARED_CONTEXT + "\n\n" + AGENT_ROLES[agent]
     prompt = build_prompt(agent, round_num, num_rounds)
     color  = COLORS.get(agent, "")
 
+    tools_display = " ".join(t.split("(")[0] for t in allowed_tools)
     print(f"\n{color}{'=' * 60}")
-    print(f"  {agent} — Round {round_num}")
+    print(f"  {agent} — Round {round_num}  ({model}, effort={effort})")
+    print(f"  tools: {tools_display}")
     print(f"{'=' * 60}{RESET}\n")
 
     cmd = [
         "claude",
         "-p", prompt,
         "--system-prompt", system,
+        "--model", model,
+        "--effort", effort,
         "--dangerously-skip-permissions",
         "--no-session-persistence",
         "--output-format", "text",
+        "--allowedTools", *allowed_tools,
     ]
 
     start = time.time()
@@ -330,10 +365,15 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str]):
         "claude",
         "-p", prompt,
         "--system-prompt", FACILITATOR_SYSTEM,
+        "--model", "haiku",
+        "--effort", "high",
         "--dangerously-skip-permissions",
         "--no-session-persistence",
         "--output-format", "text",
+        "--allowedTools", "Read", "Write", "Edit", "Glob", "Grep",
     ]
+
+    print(f"{DIM}  (haiku, effort=high){RESET}")
 
     start = time.time()
     try:
@@ -376,6 +416,11 @@ def check_for_new_agents(active_agents: list[str]) -> list[str]:
 
         if name not in AGENT_ROLES:
             AGENT_ROLES[name] = role_prompt
+            AGENT_CONFIGS[name] = {
+                "model": data.get("model", "sonnet"),
+                "effort": data.get("effort", "medium"),
+                "role_prompt": role_prompt,
+            }
             COLORS.setdefault(name, "\033[1;36m")  # cyan for dynamic agents
             active_agents.append(name)
             print(f"\n{BOLD}  + New agent recruited: {name}{RESET}")
@@ -480,7 +525,7 @@ def main():
   Workspace : {WORKSPACE}
   Logs      : {LOGS_DIR}
   Git log   : cd {WORKSPACE} && git log --oneline
-  Run game  : cd {WORKSPACE} && python main.py
+  Run game  : cd {WORKSPACE} && python3 main.py
 """)
 
 
