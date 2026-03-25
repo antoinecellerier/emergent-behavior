@@ -213,49 +213,38 @@ AGENTS = list(AGENT_ROLES.keys())
 # ---------------------------------------------------------------------------
 
 FACILITATOR_SYSTEM = """\
-You are the **Facilitator** — a meta-agent that observes a team of AI agents \
-building a 3D terminal FPS game.
+You are the **Facilitator** — you summarize team discussions and handle \
+agent roster changes. You do NOT direct, manage, or advise the team.
 
-Your role is strictly about COORDINATION, not decision-making. The team owns \
-all design and implementation decisions. You help them collaborate better.
+Agents take turns sequentially each round: Architect → Engine → Gameplay → Reviewer. \
+A question asked earlier in the same round is NOT unanswered — the other agent \
+hasn't had their turn yet.
 
-IMPORTANT context: Agents take turns sequentially within each round \
-(Architect → Engine → Gameplay → Reviewer). A question from the Architect \
-that the Reviewer hasn't answered yet is NOT a communication gap — the \
-Reviewer simply hasn't had their turn yet. Only flag something as unresolved \
-if it was raised in a PREVIOUS round and no one addressed it in the current round.
+Only read and write files in your current working directory.
 
-Only read and write files in your current working directory. \
-Do NOT explore parent directories, .git internals, or the logs directory. \
-Your information sources are: MESSAGE_BOARD.md, MESSAGE_BOARD_ARCHIVE.md, \
-and the source files in the workspace. That is all you need.
+## Your tasks:
 
-## What you DO:
+1. Read MESSAGE_BOARD.md (and MESSAGE_BOARD_ARCHIVE.md if it exists).
 
-1. **Read MESSAGE_BOARD.md** (and MESSAGE_BOARD_ARCHIVE.md if it exists) to \
-understand what agents said.
+2. Write MESSAGE_BOARD_SUMMARY.md — a factual summary of what was discussed. \
+Format:
+   - Decisions made: list what the team agreed on
+   - Open questions: list questions from PREVIOUS rounds that nobody answered yet
+   - Who is working on what: based on what agents said they would do
+Do NOT add opinions, recommendations, priorities, or urgency labels.
 
-2. **Write MESSAGE_BOARD_SUMMARY.md** — a concise factual summary of what was \
-discussed. Stick to what agents actually said. Format: who said what, what \
-was agreed, what remains unresolved. Do NOT editorialize or add recommendations.
+3. If an agent explicitly asked for a new specialist on the message board, \
+write NEW_AGENT.json: {"name": "...", "role_prompt": "..."}
+If an agent said their role is complete, \
+write RETIRE_AGENT.json: {"name": "...", "reason": "..."}
+Only act on explicit agent requests — never on your own judgment.
 
-3. **Write TEAM_DIRECTIVES.md** — flag communication gaps and unresolved \
-disagreements ONLY. Examples of good flags: "Engine and Gameplay proposed \
-different file names — this needs resolution." Bad flags: anything the agents \
-didn't actually discuss or disagree about.
-
-4. **Recruit or retire agents** — only when agents themselves flagged the need:
-   Recruit: write NEW_AGENT.json with {"name": "...", "role_prompt": "..."}
-   Retire: write RETIRE_AGENT.json with {"name": "...", "reason": "..."}
-
-## What you must NOT do:
-
-- Do NOT write code or pseudo-code
-- Do NOT assign tasks or features to agents
-- Do NOT make design decisions or set priorities
-- Do NOT invent conflicts that agents didn't raise
-- Do NOT explore git history, parent directories, or log files
-- Keep it brief: 2-3 short paragraphs in TEAM_DIRECTIVES.md, not a report\
+## You must NOT:
+- Write TEAM_DIRECTIVES.md or any directive/guidance file
+- Write code, pseudo-code, or implementation details
+- Assign tasks, set priorities, or label severity
+- Make design decisions or recommendations
+- Explore parent directories, .git, or log files\
 """
 
 # ---------------------------------------------------------------------------
@@ -621,10 +610,9 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
         f"Active agents: {', '.join(active_agents)}\n\n"
         f"### Workspace files\n{tree}\n\n"
         f"### Recent git history\n{gitlog}\n\n---\n\n"
-        f"Read MESSAGE_BOARD.md. Observe how the team is communicating. "
-        f"Write TEAM_DIRECTIVES.md noting any communication gaps, unresolved "
-        f"disagreements, or things agents seem to be missing. "
-        f"If needed, recruit or retire agents."
+        f"Read MESSAGE_BOARD.md. Write MESSAGE_BOARD_SUMMARY.md. "
+        f"If any agent requested a new specialist or said their role is done, "
+        f"handle it via NEW_AGENT.json or RETIRE_AGENT.json."
     )
 
     blocked = ["Bash", "NotebookEdit", "WebFetch", "WebSearch"]
@@ -641,8 +629,8 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
     stream_path = LOGS_DIR / f"{log_tag}_facilitator.jsonl"
     stream_path.write_text("\n".join(raw_events) + "\n")
 
-    # Facilitator output goes to TEAM_DIRECTIVES.md and MESSAGE_BOARD_SUMMARY.md
-    # (written by the agent itself), NOT to the message board — that's for agents only.
+    # Facilitator writes MESSAGE_BOARD_SUMMARY.md (and optionally NEW/RETIRE_AGENT.json).
+    # Its text output does NOT go to the message board — that's for agents only.
 
     # Archive old messages, keep current round's messages at full fidelity
     _archive_message_board(keep_round=round_num)
@@ -764,14 +752,8 @@ def main():
 
     setup(resume=resume)
 
-    # Inject TEAM_DIRECTIVES.md awareness into shared context if facilitator is on
-    if use_facilitator:
-        global SHARED_CONTEXT
-        SHARED_CONTEXT += (
-            "\n\n## Team Directives\n"
-            "If a file called TEAM_DIRECTIVES.md exists, read it — it contains "
-            "guidance from the Facilitator about priorities for this round."
-        )
+    # No TEAM_DIRECTIVES.md — the Facilitator only writes summaries.
+    # Agents read MESSAGE_BOARD_SUMMARY.md for context on older rounds.
 
     try:
         # Planning rounds: agents discuss priorities before anyone writes code
