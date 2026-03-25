@@ -2,9 +2,23 @@
   "sandbox": {
     "enabled": true,
     "filesystem": {
+      "allowRead": ["/home/antoine/stuff/emergent-behavior"],
+      "denyRead": ["/home/antoine"],
       "allowWrite": ["."],
-      "denyRead": ["~/.ssh", "~/.gnupg", "~/.aws", "~/.config"]
+      "denyWrite": ["/home/antoine"]
     },
     "allowUnsandboxedCommands": false
+  },
+  "permissions": {
+    "deny": [
+      "Read(//home/antoine/**)",
+      "Edit(//home/antoine/**)",
+      "Write(//home/antoine/**)"
+    ],
+    "allow": [
+      "Read(//home/antoine/stuff/emergent-behavior/**)",
+      "Edit(//home/antoine/stuff/emergent-behavior/**)",
+      "Write(//home/antoine/stuff/emergent-behavior/**)"
+    ]
   }
 }
