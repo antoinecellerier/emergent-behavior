@@ -2,7 +2,9 @@
 # Default-deny file access hook: only allow access within allowed paths.
 # Exit 0 = allow, exit 2 = block.
 
-PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+# SANDBOX_ALLOWED_DIR is set by the orchestrator to the run's workspace.
+# Fall back to project dir if unset (e.g. running outside orchestrator).
+SANDBOX_DIR="${SANDBOX_ALLOWED_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
 hook_input=$(cat)
 tool=$(echo "$hook_input" | jq -r '.tool_name // .tool // empty')
@@ -38,7 +40,7 @@ abs_path=$(realpath -m "$abs_path" 2>/dev/null) || exit 2
 
 # Allowed path prefixes
 ALLOWED=(
-  "$PROJECT_DIR"   # project tree (workspace, logs, etc.)
+  "$SANDBOX_DIR"   # run workspace (or project root as fallback)
   "/usr"           # system docs, stdlib source, man pages
   "/tmp"           # temp files from agent tests
   "/proc"          # terminal info, system state

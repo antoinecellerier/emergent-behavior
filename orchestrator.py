@@ -12,6 +12,7 @@ Usage:
 
 import subprocess
 import sys
+import os
 import time
 import json
 import argparse
@@ -409,6 +410,9 @@ def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
     text_chunks: list[str] = []     # fallback: collect text blocks in case budget cuts off
     raw_events: list[str] = []      # full JSON stream for analysis
 
+    # Pass workspace path to the sandbox hook via env var
+    env = {**os.environ, "SANDBOX_ALLOWED_DIR": str(WORKSPACE)}
+
     try:
         proc = subprocess.Popen(
             cmd,
@@ -418,6 +422,7 @@ def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
             text=True,
             bufsize=1,                           # line-buffered
             cwd=str(WORKSPACE),
+            env=env,
         )
 
         # Send prompt via stdin and close
