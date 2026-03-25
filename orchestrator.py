@@ -274,17 +274,30 @@ def append_to_board(agent: str, round_num: int, text: str):
     board.write_text(board.read_text() + entry)
 
 
-def build_prompt(agent: str, round_num: int, num_rounds: int, *, planning: bool = False) -> str:
+def build_prompt(agent: str, round_num: int, num_rounds: int, *,
+                  planning: bool = False, plan_round: int = 0, plan_total: int = 0) -> str:
     tree    = workspace_tree()
     gitlog  = recent_git_log()
 
     if planning:
+        if plan_round < plan_total:
+            phase = (
+                f"This is planning round {plan_round} of {plan_total}. "
+                "Propose ideas, react to teammates' proposals, flag disagreements."
+            )
+        else:
+            phase = (
+                f"This is the FINAL planning round ({plan_round} of {plan_total}). "
+                "Converge on a plan. State clearly what YOU will build in Round 1 "
+                "and what you need from others."
+            )
         action = (
-            "This is a PLANNING round. Do NOT write any code or create files.\n"
-            "Read MESSAGE_BOARD.md, then propose what the team should prioritize "
-            "and what YOU plan to work on in the first implementation round. "
-            "Discuss dependencies — what needs to happen before what? "
-            "Respond to any proposals from teammates who went before you."
+            f"PLANNING — do NOT write any code or create files.\n"
+            f"{phase}\n"
+            "Read MESSAGE_BOARD.md, then discuss:\n"
+            "- What should the team prioritize first?\n"
+            "- What are the key dependencies — what must exist before what?\n"
+            "- What will YOU specifically work on in the first implementation round?"
         )
     else:
         action = (
@@ -402,7 +415,8 @@ def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
     return result_text.strip(), elapsed, raw_events
 
 
-def run_agent(agent: str, round_num: int, num_rounds: int, *, planning: bool = False) -> str:
+def run_agent(agent: str, round_num: int, num_rounds: int, *,
+              planning: bool = False, plan_round: int = 0, plan_total: int = 0) -> str:
     cfg              = AGENT_CONFIGS.get(agent, {})
     model            = cfg.get("model", "sonnet")
     effort           = cfg.get("effort", "medium")
@@ -411,7 +425,8 @@ def run_agent(agent: str, round_num: int, num_rounds: int, *, planning: bool = F
         # During planning, block all write tools — discussion only
         disallowed_tools = list(set(disallowed_tools) | {"Bash", "Write", "Edit", "NotebookEdit"})
     system = SHARED_CONTEXT + "\n\n" + AGENT_ROLES[agent]
-    prompt = build_prompt(agent, round_num, num_rounds, planning=planning)
+    prompt = build_prompt(agent, round_num, num_rounds, planning=planning,
+                          plan_round=plan_round, plan_total=plan_total)
     color  = COLORS.get(agent, "")
 
     blocked = ",".join(disallowed_tools) if disallowed_tools else "(none)"
@@ -554,6 +569,8 @@ def main():
                         help="Which agents to include")
     parser.add_argument("--no-facilitator", action="store_true",
                         help="Disable the Facilitator meta-agent")
+    parser.add_argument("--planning-rounds", type=int, default=3,
+                        help="Number of planning rounds before coding (default: 3, 0 to skip)")
     parser.add_argument("--facilitator-every", type=int, default=2,
                         help="Run Facilitator every N rounds (default: 2)")
     args = parser.parse_args()
@@ -568,6 +585,7 @@ def main():
  ╚═══════════════════════════════════════════════════════════╝{RESET}
 
   Agents      : {', '.join(active_agents)}
+  Planning    : {args.planning_rounds} round{'s' if args.planning_rounds != 1 else ''}{' (skipped)' if args.planning_rounds == 0 else ''}
   Facilitator : {'every ' + str(args.facilitator_every) + ' rounds' if use_facilitator else 'disabled'}
   Rounds      : {args.rounds}
   Workspace   : {WORKSPACE}
@@ -585,19 +603,21 @@ def main():
         )
 
     try:
-        # Planning round: agents discuss priorities before anyone writes code
-        if args.start_round <= 0:
-            pass  # skip planning if resuming past it
+        # Planning rounds: agents discuss priorities before anyone writes code
+        if args.start_round <= 0 or args.planning_rounds == 0:
+            pass  # skip planning if resuming past it or disabled
         else:
-            log(f"\n{BOLD}{'#' * 60}")
-            log(f"  PLANNING ROUND — no code, just coordination")
-            log(f"  Active agents: {', '.join(active_agents)}")
-            log(f"{'#' * 60}{RESET}")
+            for plan_round in range(1, args.planning_rounds + 1):
+                log(f"\n{BOLD}{'#' * 60}")
+                log(f"  PLANNING {plan_round}/{args.planning_rounds} — no code, just coordination")
+                log(f"  Active agents: {', '.join(active_agents)}")
+                log(f"{'#' * 60}{RESET}")
 
-            for agent in active_agents:
-                run_agent(agent, 0, args.rounds, planning=True)
+                for agent in active_agents:
+                    run_agent(agent, 0, args.rounds, planning=True,
+                              plan_round=plan_round, plan_total=args.planning_rounds)
 
-            log(f"\n{DIM}Planning round complete.{RESET}")
+                log(f"\n{DIM}Planning round {plan_round} complete.{RESET}")
 
         for round_num in range(args.start_round, args.rounds + 1):
             log(f"\n{BOLD}{'#' * 60}")
