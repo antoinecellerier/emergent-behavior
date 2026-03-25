@@ -21,9 +21,17 @@ An orchestrator (`orchestrator.py`) that spawns multiple Claude Code agents (`cl
 - `orchestrator.py` — main experiment runner
 - `test_runner.py` — pytest suite for CLI integration (stream-json parsing, tool restriction, sandbox)
 - `test_real_agent.py` — reproduces real agent conditions (long prompts, tool use, result capture)
+- `test_sandbox.py` — 26 pytest tests for the sandbox hook (read/write blocking, path traversal, archival)
 - `sandbox-settings.json` — bubblewrap filesystem isolation config
+- `.claude/hooks/sandbox-read.sh` — default-deny file access hook
 - `workspace/` — agents' shared workspace (gitignored, has its own git repo)
 - `logs/` — per-turn logs (.md) and full event streams (.jsonl)
+
+## Documentation
+- `docs/architecture.md` — system design, sandbox model, stream processing, CLI flags
+- `docs/agent-behavior.md` — prompt design, emergent patterns, Facilitator evolution
+- `docs/security.md` — threat model, defense layers, security review findings
+- `docs/lessons-learned.md` — practical insights from iterating on the system
 
 ## Workflow rules
 
@@ -37,8 +45,9 @@ Each experiment creates a timestamped directory under `runs/`. NEVER delete run 
 Most behavior changes come from prompt edits, not new code. Prefer adjusting system prompts and shared context over adding orchestrator features. Keep the orchestrator simple.
 
 ### Claude CLI flags
-- `--disallowedTools` is the correct flag for tool restriction (works with `--dangerously-skip-permissions`)
+- `--disallowedTools` is the correct flag for tool restriction (works with `--permission-mode bypassPermissions`)
 - `--tools` and `--allowedTools` do NOT reliably restrict tools
+- Use `--permission-mode bypassPermissions` not `--dangerously-skip-permissions` (the latter bypasses the sandbox)
 - `--output-format stream-json` requires `--verbose`
 - Pipe prompts via stdin to `claude -p` (avoid long CLI arguments)
 - Use `readline()` loop, not `for line in proc.stdout` (avoids pipe buffering)
