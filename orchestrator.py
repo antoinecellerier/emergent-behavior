@@ -81,7 +81,9 @@ compelling reason explained on the message board.
 4. If you are blocked or need input from someone, say so clearly.
 5. Write clean, working Python. Prefer the standard library where possible.
 6. You MUST end your turn by producing a text summary — this is how your \
-team knows what you did.\
+team knows what you did. This is critical: always finish with text output.
+7. Keep your turn focused: aim for ~15 tool calls max. Read what \
+you need, make your changes, then summarize. Do not gold-plate.\
 """
 
 # ---------------------------------------------------------------------------
@@ -91,7 +93,7 @@ team knows what you did.\
 # Each agent: role_prompt, model, effort, disallowed_tools
 # disallowed_tools blocks specific tools via --disallowedTools (works with --dangerously-skip-permissions).
 # max_budget caps per-turn spend to prevent any agent from going overboard.
-MAX_BUDGET_PER_TURN = "0.10"   # USD — ~10-15 tool uses on sonnet
+MAX_TOOL_CALLS_HINT = 15       # suggested limit — enforced via prompt, not hard cap
 AGENT_CONFIGS = {
     "Architect": {
         "model": "sonnet",
@@ -306,13 +308,14 @@ def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
         "--verbose",                              # required for stream-json
         "--no-session-persistence",
         "--settings", str(SETTINGS_FILE),        # bubblewrap sandbox
-        "--max-budget-usd", MAX_BUDGET_PER_TURN,
         "--dangerously-skip-permissions",
         "--disallowedTools", ",".join(disallowed_tools),
     ]
 
     start = time.time()
     result_text = ""
+    text_chunks: list[str] = []     # fallback: collect text blocks in case budget cuts off
+    raw_events: list[str] = []      # full JSON stream for analysis
 
     try:
         proc = subprocess.Popen(
@@ -337,6 +340,7 @@ def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
             line = line.strip()
             if not line:
                 continue
+            raw_events.append(line)
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
@@ -354,14 +358,21 @@ def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
                         tool = block.get("name", "?")
                         log(f"{color}    [{tool}]{RESET}")
                     elif btype == "text":
-                        # Don't print text chunks — they'll be in the result
-                        pass
+                        text_chunks.append(block.get("text", ""))
 
             # Final result
             if etype == "result":
                 result_text = event.get("result", "")
+                subtype = event.get("subtype", "")
+                if subtype and subtype != "success":
+                    log(f"{DIM}    (stop: {subtype}){RESET}")
 
         proc.wait(timeout=timeout)
+
+        # Fallback: if result is empty (e.g. budget exceeded), use collected text chunks
+        if not result_text and text_chunks:
+            result_text = "".join(text_chunks)
+            log(f"{DIM}    (using fallback text from stream){RESET}")
 
         if proc.returncode != 0 and not result_text:
             stderr = proc.stderr.read().strip()
@@ -374,7 +385,7 @@ def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
         result_text = f"(error: {e})"
 
     elapsed = time.time() - start
-    return result_text.strip(), elapsed
+    return result_text.strip(), elapsed, raw_events
 
 
 def run_agent(agent: str, round_num: int, num_rounds: int) -> str:
@@ -392,7 +403,7 @@ def run_agent(agent: str, round_num: int, num_rounds: int) -> str:
     log(f"  blocked tools: {blocked}")
     log(f"{'=' * 60}{RESET}")
 
-    output, elapsed = _run_claude(prompt, system, model, effort, disallowed_tools, color)
+    output, elapsed, raw_events = _run_claude(prompt, system, model, effort, disallowed_tools, color)
 
     # Show truncated output
     display = output[:3000] + "\n..." if len(output) > 3000 else output
@@ -400,9 +411,11 @@ def run_agent(agent: str, round_num: int, num_rounds: int) -> str:
         log(f"{DIM}{display}{RESET}")
     log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
 
-    # Log full output
+    # Log full output and raw JSON stream
     log_path = LOGS_DIR / f"round_{round_num:02d}_{agent.lower()}.md"
     log_path.write_text(f"# {agent} — Round {round_num}\n\n{output}\n")
+    stream_path = LOGS_DIR / f"round_{round_num:02d}_{agent.lower()}.jsonl"
+    stream_path.write_text("\n".join(raw_events) + "\n")
 
     # Append to message board and commit
     if output:
@@ -435,8 +448,8 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str]):
     )
 
     blocked = ["Bash", "NotebookEdit", "WebFetch", "WebSearch"]
-    output, elapsed = _run_claude(prompt, FACILITATOR_SYSTEM, "haiku", "high",
-                                   blocked, color, timeout=300)
+    output, elapsed, raw_events = _run_claude(prompt, FACILITATOR_SYSTEM, "haiku", "high",
+                                               blocked, color, timeout=300)
 
     if output:
         display = output[:2000] + "\n..." if len(output) > 2000 else output
@@ -445,6 +458,8 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str]):
 
     log_path = LOGS_DIR / f"round_{round_num:02d}_facilitator.md"
     log_path.write_text(f"# Facilitator — after Round {round_num}\n\n{output}\n")
+    stream_path = LOGS_DIR / f"round_{round_num:02d}_facilitator.jsonl"
+    stream_path.write_text("\n".join(raw_events) + "\n")
 
     if output:
         append_to_board("Facilitator", round_num, output)
