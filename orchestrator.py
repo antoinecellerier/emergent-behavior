@@ -101,14 +101,15 @@ performance, testing, etc.), say so on the message board.\
 # ---------------------------------------------------------------------------
 
 # Each agent: role_prompt, model, effort, disallowed_tools
-# disallowed_tools blocks specific tools via --disallowedTools (works with --dangerously-skip-permissions).
-# max_budget caps per-turn spend to prevent any agent from going overboard.
+# disallowed_tools blocks specific tools via --disallowedTools.
+# ALWAYS_BLOCKED: tools no experiment agent should ever use.
+ALWAYS_BLOCKED = ["NotebookEdit", "WebFetch", "WebSearch"]
 MAX_TOOL_CALLS_HINT = 15       # suggested limit — enforced via prompt, not hard cap
 AGENT_CONFIGS = {
     "Architect": {
         "model": "sonnet",
         "effort": "medium",
-        "disallowed_tools": ["Bash", "NotebookEdit", "WebFetch", "WebSearch"],
+        "disallowed_tools": ["Bash"],
         "role_prompt": """\
 You are the **Architect**.
 
@@ -128,7 +129,7 @@ ARCHITECTURE.md (and updates to it), not .py files. Trust your team.\
     "Engine": {
         "model": "sonnet",
         "effort": "medium",
-        "disallowed_tools": ["NotebookEdit", "WebFetch", "WebSearch"],
+        "disallowed_tools": [],
         "role_prompt": """\
 You are the **Engine Developer**.
 
@@ -146,7 +147,7 @@ Write performant Python. Consider using curses or direct ANSI escape codes.\
     "Gameplay": {
         "model": "sonnet",
         "effort": "medium",
-        "disallowed_tools": ["NotebookEdit", "WebFetch", "WebSearch"],
+        "disallowed_tools": [],
         "role_prompt": """\
 You are the **Gameplay Developer**.
 
@@ -164,7 +165,7 @@ Build on top of the engine — use the interfaces provided by the Engine dev.\
     "Reviewer": {
         "model": "sonnet",
         "effort": "medium",
-        "disallowed_tools": ["NotebookEdit", "WebFetch", "WebSearch"],
+        "disallowed_tools": [],
         "role_prompt": """\
 You are the **Reviewer / QA**.
 
@@ -242,12 +243,16 @@ def _generate_settings():
     """Generate sandbox settings with resolved absolute paths for permissions."""
     global SETTINGS_FILE
     base = json.loads(SANDBOX_SETTINGS_TEMPLATE.read_text())
-    # Permission paths: // prefix = absolute. HOME_DIR/PROJECT_DIR already start with /
+    # Permission paths: // prefix = absolute. Deny wins over allow regardless of
+    # specificity, so we deny specific sensitive dirs rather than all of ~.
     base["permissions"] = {
         "deny": [
-            f"Read(/{HOME_DIR}/**)",
-            f"Edit(/{HOME_DIR}/**)",
-            f"Write(/{HOME_DIR}/**)",
+            f"Read(/{HOME_DIR}/.ssh/**)",
+            f"Read(/{HOME_DIR}/.gnupg/**)",
+            f"Read(/{HOME_DIR}/.aws/**)",
+            f"Read(/{HOME_DIR}/.config/**)",
+            f"Read(/{HOME_DIR}/.claude/**)",
+            f"Read(/{HOME_DIR}/.env)",
         ],
         "allow": [
             f"Read(/{PROJECT_DIR}/**)",
@@ -488,10 +493,10 @@ def run_agent(agent: str, round_num: int, num_rounds: int, *,
     cfg              = AGENT_CONFIGS.get(agent, {})
     model            = cfg.get("model", "sonnet")
     effort           = cfg.get("effort", "medium")
-    disallowed_tools = cfg.get("disallowed_tools", [])
+    disallowed_tools = list(set(ALWAYS_BLOCKED) | set(cfg.get("disallowed_tools", [])))
     if planning:
         # During planning, block all write tools — discussion only
-        disallowed_tools = list(set(disallowed_tools) | {"Bash", "Write", "Edit", "NotebookEdit"})
+        disallowed_tools = list(set(disallowed_tools) | {"Bash", "Write", "Edit"})
     system = SHARED_CONTEXT + "\n\n" + AGENT_ROLES[agent]
     prompt = build_prompt(agent, round_num, num_rounds, planning=planning,
                           plan_round=plan_round, plan_total=plan_total)
