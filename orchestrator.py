@@ -557,9 +557,8 @@ def run_agent(agent: str, round_num: int, num_rounds: int, *,
     output, elapsed, raw_events = _run_claude(prompt, system, model, effort, disallowed_tools, color)
 
     # Show truncated output
-    display = output[:3000] + "\n..." if len(output) > 3000 else output
-    if display:
-        log(f"{DIM}{display}{RESET}")
+    if output:
+        log(f"{DIM}{output}{RESET}")
     log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
 
     # Log full output and raw JSON stream
@@ -622,8 +621,7 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
                                                blocked, color, timeout=300)
 
     if output:
-        display = output[:2000] + "\n..." if len(output) > 2000 else output
-        log(f"{DIM}{display}{RESET}")
+        log(f"{DIM}{output}{RESET}")
     log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
 
     log_path = LOGS_DIR / f"{log_tag}_facilitator.md"
