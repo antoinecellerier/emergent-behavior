@@ -183,61 +183,37 @@ class TestMessageBoardArchival:
 
     def test_archives_old_keeps_current(self, tmp_path):
         """Round 1 messages archived, round 2 messages kept."""
-        import sys
-        sys.path.insert(0, str(Path(__file__).parent))
-        import orchestrator
-        # Point orchestrator at tmp workspace
-        old_ws = orchestrator.WORKSPACE
-        orchestrator.WORKSPACE = tmp_path
-
+        from board import archive_message_board
         board = self._setup_board(tmp_path)
-        orchestrator._archive_message_board(keep_round=2)
+        archive_message_board(tmp_path, keep_round=2)
 
         board_text = board.read_text()
         archive_text = (tmp_path / "MESSAGE_BOARD_ARCHIVE.md").read_text()
 
-        # Board should only have round 2 messages
         assert "Round 1" not in board_text, "Round 1 should be archived"
         assert "Round 2" in board_text, "Round 2 should stay on board"
         assert "Updated ARCHITECTURE.md" in board_text
         assert "Fixed rendering bug" in board_text
-
-        # Archive should have round 1 messages
         assert "Round 1" in archive_text, "Round 1 should be in archive"
         assert "Designed the architecture" in archive_text
         assert "Built the raycaster" in archive_text
 
-        orchestrator.WORKSPACE = old_ws
-
     def test_nothing_to_archive(self, tmp_path):
         """If all messages are from current round, nothing gets archived."""
-        import sys
-        sys.path.insert(0, str(Path(__file__).parent))
-        import orchestrator
-        old_ws = orchestrator.WORKSPACE
-        orchestrator.WORKSPACE = tmp_path
-
+        from board import archive_message_board
         board = Path(tmp_path) / "MESSAGE_BOARD.md"
         board.write_text(
             "# Message Board\n\nTeam communication log.\n\n---\n\n"
             "### [Architect] Round 1 — 10:00:00\n\nFirst message.\n\n---\n\n"
         )
-        orchestrator._archive_message_board(keep_round=1)
+        archive_message_board(tmp_path, keep_round=1)
 
-        # Board unchanged, no archive created
         assert "First message" in board.read_text()
         assert not (tmp_path / "MESSAGE_BOARD_ARCHIVE.md").exists()
 
-        orchestrator.WORKSPACE = old_ws
-
     def test_planning_entries_archived_on_implementation(self, tmp_path):
         """Planning entries get archived when keep_round > 0."""
-        import sys
-        sys.path.insert(0, str(Path(__file__).parent))
-        import orchestrator
-        old_ws = orchestrator.WORKSPACE
-        orchestrator.WORKSPACE = tmp_path
-
+        from board import archive_message_board
         board = Path(tmp_path) / "MESSAGE_BOARD.md"
         board.write_text(
             "# Message Board\n\nTeam communication log.\n\n---\n\n"
@@ -245,28 +221,19 @@ class TestMessageBoardArchival:
             "### [Engine] Planning 1/3 — 10:05:00\n\nAgreed.\n\n---\n\n"
             "### [Architect] Round 1 — 11:00:00\n\nWrote ARCHITECTURE.md.\n\n---\n\n"
         )
-        orchestrator._archive_message_board(keep_round=1)
+        archive_message_board(tmp_path, keep_round=1)
 
         board_text = board.read_text()
         archive_text = (tmp_path / "MESSAGE_BOARD_ARCHIVE.md").read_text()
 
-        # Planning entries should be archived
         assert "Planning" not in board_text, "Planning should be archived"
         assert "Planning" in archive_text
-        # Round 1 should stay
         assert "Round 1" in board_text
         assert "ARCHITECTURE.md" in board_text
 
-        orchestrator.WORKSPACE = old_ws
-
     def test_planning_round_archival(self, tmp_path):
         """Planning round 1 messages archived when Facilitator runs after planning 1."""
-        import sys
-        sys.path.insert(0, str(Path(__file__).parent))
-        import orchestrator
-        old_ws = orchestrator.WORKSPACE
-        orchestrator.WORKSPACE = tmp_path
-
+        from board import archive_message_board
         board = Path(tmp_path) / "MESSAGE_BOARD.md"
         board.write_text(
             "# Message Board\n\nTeam communication log.\n\n---\n\n"
@@ -274,20 +241,16 @@ class TestMessageBoardArchival:
             "### [Engine] Planning 1/3 — 10:05:00\n\nRound 1 response.\n\n---\n\n"
             "### [Architect] Planning 2/3 — 11:00:00\n\nRound 2 refinement.\n\n---\n\n"
         )
-        # After planning round 2, archive planning round 1
-        orchestrator._archive_message_board(keep_plan=2)
+        archive_message_board(tmp_path, keep_plan=2)
 
         board_text = board.read_text()
         archive_text = (tmp_path / "MESSAGE_BOARD_ARCHIVE.md").read_text()
 
-        # Planning 1 archived, planning 2 kept
         assert "Planning 1/3" not in board_text
         assert "Planning 2/3" in board_text
         assert "Round 2 refinement" in board_text
         assert "Planning 1/3" in archive_text
         assert "Round 1 proposal" in archive_text
-
-        orchestrator.WORKSPACE = old_ws
 
 
 if __name__ == "__main__":

@@ -5,23 +5,37 @@ Multi-Agent Emergent Behavior Experiment
 Agents collaboratively build a 3D first-person shooter in the terminal.
 
 Usage:
-    python3 orchestrator.py                  # Run with defaults (10 rounds)
-    python3 orchestrator.py --rounds 5       # Custom round count
-    python3 orchestrator.py --resume         # Resume from existing workspace
+    python3 orchestrator.py --rounds 3              # fresh: planning + 3 rounds
+    python3 orchestrator.py --resume <dir> --rounds 2  # add 2 more rounds
 """
 
-import subprocess
 import sys
-import os
-import time
 import json
 import signal
 import argparse
 from pathlib import Path
 from datetime import datetime
 
+from prompts import AGENTS, AGENT_CONFIGS
+from agents import (
+    log, git, git_commit, run_agent, run_facilitator,
+    check_for_new_agents, check_for_retirements, detect_resume_state,
+    BOLD, RESET, DIM,
+)
+from board import init_board
 
-# Graceful shutdown: first Ctrl-C sets flag, second Ctrl-C force-kills
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+
+RUNS_DIR = Path(__file__).parent / "runs"
+SANDBOX_SETTINGS_TEMPLATE = Path(__file__).parent / "sandbox-settings.json"
+PROJECT_DIR = str(Path(__file__).parent.resolve())
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown
+# ---------------------------------------------------------------------------
+
 _shutdown_requested = False
 
 def _handle_sigint(signum, frame):
@@ -34,768 +48,56 @@ def _handle_sigint(signum, frame):
 
 signal.signal(signal.SIGINT, _handle_sigint)
 
-
-SANDBOX_SETTINGS_TEMPLATE = Path(__file__).parent / "sandbox-settings.json"
-PROJECT_DIR = str(Path(__file__).parent.resolve())
-HOME_DIR = str(Path.home())
-SETTINGS_FILE = None  # generated per-run with resolved paths
-
-
-def log(msg: str = ""):
-    """Print and immediately flush so output is visible in real time."""
-    print(msg, flush=True)
-
 # ---------------------------------------------------------------------------
-# Configuration
+# Setup
 # ---------------------------------------------------------------------------
 
-RUNS_DIR  = Path(__file__).parent / "runs"
-WORKSPACE = None  # set in main() based on run directory
-LOGS_DIR  = None  # set in main() based on run directory
-
-COLORS = {
-    "Architect":   "\033[1;34m",
-    "Engine":      "\033[1;32m",
-    "Gameplay":    "\033[1;33m",
-    "Reviewer":    "\033[1;31m",
-    "Facilitator": "\033[1;35m",
-}
-RESET = "\033[0m"
-DIM   = "\033[2m"
-BOLD  = "\033[1m"
-
-# ---------------------------------------------------------------------------
-# Shared context injected into every agent's system prompt
-# ---------------------------------------------------------------------------
-
-SHARED_CONTEXT = """\
-You are part of a team of AI agents collaboratively building a 3D first-person \
-shooter game that runs entirely in the terminal.
-
-## The Project
-Build a playable FPS game in Python that:
-- Renders a 3D first-person perspective view in the terminal
-- Has player movement and looking controls
-- Features at least one enemy type with basic AI
-- Includes a simple map/level
-- Runs at a reasonable frame rate in a standard terminal
-- Should be playable by users with different keyboard layouts and setups
-
-## Your Team
-- **Architect** — designs overall structure, makes technical decisions, writes specs
-- **Engine** — implements 3D rendering, terminal output, performance
-- **Gameplay** — implements controls, enemies, items, game loop, levels
-- **Reviewer** — reviews code, tests the game, reports bugs, fixes small issues
-
-## How You Communicate
-Read these in order — recent messages are your primary source of truth:
-1. **MESSAGE_BOARD.md** — current round messages (full text, most important)
-2. **MESSAGE_BOARD_SUMMARY.md** — condensed summary of older rounds (background context)
-3. **MESSAGE_BOARD_ARCHIVE.md** — only if you need exact wording from a past discussion
-If the summary contradicts a recent message, trust the recent message.
-- Do NOT write to MESSAGE_BOARD*.md files yourself. Your final text response \
-will be automatically posted to the board by the orchestrator.
-- You MAY write to **TEAM_PRACTICES.md** to document working methods the team \
-has discovered (e.g., testing approaches, useful patterns, tools you built). \
-This file persists across rounds and helps the team build institutional memory.
-
-## Ground Rules
-1. Always read existing files before modifying them.
-2. Build on existing work — but if you believe a technical approach is \
-suboptimal, make your case on the message board with a concrete alternative. \
-The team's first idea isn't always the best one. Disagree constructively.
-3. Keep changes focused on your role.
-4. If you are blocked or need input from someone, say so clearly.
-5. Write clean, working Python. Prefer the standard library where possible.
-6. You MUST end your turn by producing a text summary — this is how your \
-team knows what you did. This is critical: always finish with text output.
-7. Keep your turn focused: aim for ~15 tool calls max. Read what \
-you need, make your changes, then summarize. Do not gold-plate.
-8. Before ending your turn, briefly reflect: what perspective or expertise \
-is the team missing? If you identify a genuine gap, you have three options — \
-pick one, don't just observe:
-   a. Solve it yourself this turn.
-   b. Say exactly **"We need a [Role] agent to [do what]"** on the message \
-board — the orchestrator will add one next round.
-   c. Propose a concrete next step for an existing teammate.
-Never flag a gap without taking one of these actions. Repeating an \
-observation from a previous round without acting on it is not useful.\
-"""
-
-# ---------------------------------------------------------------------------
-# Per-agent role prompts
-# ---------------------------------------------------------------------------
-
-# Each agent: role_prompt, model, effort, disallowed_tools
-# disallowed_tools blocks specific tools via --disallowedTools.
-# ALWAYS_BLOCKED: tools no experiment agent should ever use.
-ALWAYS_BLOCKED = ["NotebookEdit", "WebFetch", "WebSearch"]
-MAX_TOOL_CALLS_HINT = 15       # suggested limit — enforced via prompt, not hard cap
-AGENT_CONFIGS = {
-    "Architect": {
-        "model": "sonnet",
-        "effort": "medium",
-        "disallowed_tools": ["Bash"],
-        "role_prompt": """\
-You are the **Architect**.
-
-Priorities:
-- Write ARCHITECTURE.md describing the project structure, module responsibilities, \
-and key design decisions (3D rendering approach, input handling, etc.).
-- Define interfaces and contracts between engine and gameplay code — describe \
-function signatures, data structures, and module boundaries in the architecture doc.
-- As the project matures, review the overall design and propose improvements.
-
-IMPORTANT: Do NOT create implementation files or skeleton code. Your teammates \
-will write their own code based on your architecture doc. Your deliverable is \
-ARCHITECTURE.md (and updates to it), not .py files. Trust your team.
-
-If the architecture is settled and no teammate raised issues on the message \
-board, keep your turn short: say "Architecture is stable, no changes needed" \
-and move on. Do not re-read or re-edit a document that doesn't need updating.\
-""",
-    },
-
-    "Engine": {
-        "model": "sonnet",
-        "effort": "medium",
-        "disallowed_tools": [],
-        "role_prompt": """\
-You are the **Engine Developer**.
-
-Priorities:
-- Implement the 3D rendering pipeline for the terminal.
-- Handle terminal output efficiently.
-- Implement the camera and viewport system.
-- Handle input without blocking.
-- Optimise rendering so the game feels responsive.
-
-Write performant Python. Choose the best tools and libraries available.
-
-If no teammate raised issues with your code and you have nothing to add, \
-keep your turn short and move on. Don't re-read or re-edit stable code.\
-""",
-    },
-
-    "Gameplay": {
-        "model": "sonnet",
-        "effort": "medium",
-        "disallowed_tools": [],
-        "role_prompt": """\
-You are the **Gameplay Developer**.
-
-Priorities:
-- Implement player movement, rotation, and collision detection.
-- Create enemy types with simple AI (chase, patrol, etc.).
-- Design and implement at least one map/level (can be a 2-D grid).
-- Wire up the game loop: input → update → render cycle.
-- Add weapons, health, scoring, and win/lose conditions.
-
-Build on top of the engine — use the interfaces provided by the Engine dev.
-
-If no teammate raised issues with your code and you have nothing to add, \
-keep your turn short and move on. Don't re-read or re-edit stable code.\
-""",
-    },
-
-    "Reviewer": {
-        "model": "sonnet",
-        "effort": "medium",
-        "disallowed_tools": [],
-        "role_prompt": """\
-You are the **Reviewer / QA**.
-
-Priorities:
-- Read through the codebase and check for bugs or integration issues.
-- Try to run the game and verify it works.
-- Fix small bugs you find — but always note them on the message board.
-- Suggest concrete, actionable improvements with code snippets.
-- Ensure the code stays consistent and well-organised.
-- Identify missing perspectives: are there concerns the team isn't \
-thinking about? (accessibility, terminal compatibility, usability, \
-error handling, input methods, color-blind users, small terminals, etc.) \
-If so, flag them and suggest whether the team needs a specialist.
-
-Be constructive and specific. Prefer fixing over just reporting. \
-Challenge decisions that seem suboptimal — don't just accept the status quo.\
-""",
-    },
-}
-
-# Backwards-compat: keep a flat role-prompt dict for run_agent
-AGENT_ROLES = {name: cfg["role_prompt"] for name, cfg in AGENT_CONFIGS.items()}
-
-AGENTS = list(AGENT_ROLES.keys())
-
-# ---------------------------------------------------------------------------
-# Facilitator — meta-agent that runs between rounds
-# ---------------------------------------------------------------------------
-
-FACILITATOR_SYSTEM = """\
-You are the **Facilitator** — you summarize team discussions and handle \
-agent roster changes. You do NOT direct, manage, or advise the team.
-
-Agents take turns sequentially each round: Architect → Engine → Gameplay → Reviewer. \
-A question asked earlier in the same round is NOT unanswered — the other agent \
-hasn't had their turn yet.
-
-Only read and write files in your current working directory.
-
-## Your tasks:
-
-1. Read MESSAGE_BOARD.md (and MESSAGE_BOARD_ARCHIVE.md if it exists).
-
-2. Write MESSAGE_BOARD_SUMMARY.md — a factual summary of what was discussed. \
-Format:
-   - Decisions made: list what the team agreed on
-   - Open questions: list questions from PREVIOUS rounds that nobody answered yet
-   - Who is working on what: based on what agents said they would do
-Do NOT add opinions, recommendations, priorities, or urgency labels.
-
-3. If an agent explicitly asked for a new specialist on the message board, \
-write NEW_AGENT.json: {"name": "...", "role_prompt": "..."}
-If an agent said their role is complete, \
-write RETIRE_AGENT.json: {"name": "...", "reason": "..."}
-Only act on explicit agent requests — never on your own judgment.
-
-## You must NOT:
-- Write code, pseudo-code, or implementation details
-- Assign tasks, set priorities, or label severity
-- Make design decisions or recommendations
-- Create any files other than MESSAGE_BOARD_SUMMARY.md and agent roster JSONs
-- Explore parent directories, .git, or log files\
-"""
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _generate_settings():
-    """Generate sandbox settings with resolved absolute paths for permissions."""
-    global SETTINGS_FILE
+def _generate_settings(logs_dir: Path) -> Path:
+    """Generate sandbox settings with hooks for this run."""
     base = json.loads(SANDBOX_SETTINGS_TEMPLATE.read_text())
-    # Hooks provide default-deny reads (only project, /usr, /tmp allowed).
-    # The sandbox filesystem layer handles Bash; the hook handles Read/Edit/Glob/Grep.
     hook_path = str(Path(PROJECT_DIR) / ".claude" / "hooks" / "sandbox-read.sh")
     base["hooks"] = [
-        {
-            "event": "PreToolUse",
-            "handler": {"command": [hook_path]},
-        }
+        {"event": "PreToolUse", "handler": {"command": [hook_path]}}
     ]
-    SETTINGS_FILE = LOGS_DIR / "sandbox-settings.json"
-    SETTINGS_FILE.write_text(json.dumps(base, indent=2) + "\n")
+    settings_file = logs_dir / "sandbox-settings.json"
+    settings_file.write_text(json.dumps(base, indent=2) + "\n")
+    return settings_file
 
 
-def setup(resume: bool):
-    """Initialise workspace, git repo, and message board."""
-    WORKSPACE.mkdir(exist_ok=True)
-    LOGS_DIR.mkdir(exist_ok=True)
-    _generate_settings()
+def setup(workspace: Path, logs_dir: Path, resume: bool) -> Path:
+    """Initialise workspace, git repo, message board. Returns settings file path."""
+    workspace.mkdir(exist_ok=True)
+    logs_dir.mkdir(exist_ok=True)
+    settings_file = _generate_settings(logs_dir)
 
-    if not (WORKSPACE / ".git").exists():
-        _git("init")
-        _git("checkout", "-b", "main")
+    if not (workspace / ".git").exists():
+        git(workspace, "init")
+        git(workspace, "checkout", "-b", "main")
 
-    board = WORKSPACE / "MESSAGE_BOARD.md"
-    if not board.exists():
-        board.write_text("# Message Board\n\nTeam communication log.\n\n---\n\n")
-        _git_commit("Initialize workspace")
-    elif not resume:
-        log(f"{BOLD}Workspace already exists.{RESET} Use --resume to continue, "
-              "or delete workspace/ to start fresh.")
+    init_board(workspace)
+    if not (workspace / "MESSAGE_BOARD.md").exists():
+        # init_board already created it, but commit if new
+        pass
+    if not resume and (workspace / "MESSAGE_BOARD.md").stat().st_size < 50:
+        git_commit(workspace, "Initialize workspace")
+    elif not resume and len(list(workspace.iterdir())) > 2:
+        # Has more than .git + MESSAGE_BOARD.md — probably leftover
+        log(f"{BOLD}Workspace already exists.{RESET} Use --resume to continue.")
         sys.exit(1)
 
-
-def _git(*args):
-    return subprocess.run(
-        ["git", *args], cwd=WORKSPACE, capture_output=True, text=True,
-    )
-
-
-def _git_commit(message: str) -> bool:
-    _git("add", "-A")
-    diff = _git("diff", "--cached", "--quiet")
-    if diff.returncode != 0:
-        _git("commit", "-m", message)
-        return True
-    return False
-
-
-def workspace_tree() -> str:
-    files = []
-    for f in sorted(WORKSPACE.rglob("*")):
-        if ".git" in f.parts:
-            continue
-        if f.is_file():
-            rel = f.relative_to(WORKSPACE)
-            size = f.stat().st_size
-            files.append(f"  {rel}  ({size} B)")
-    return "\n".join(files) if files else "  (empty — no files yet)"
-
-
-def recent_git_log() -> str:
-    result = _git("log", "--oneline", "-20", "--no-decorate")
-    return result.stdout.strip() or "(no commits yet)"
-
-
-def _archive_message_board(*, keep_round: int | None = None, keep_plan: int | None = None):
-    """Archive old messages, keep only the most recent round's messages.
-
-    Pass keep_round=N for implementation rounds, keep_plan=N for planning rounds.
-    Messages older than the keep threshold are moved to the archive.
-    """
-    import re
-    board = WORKSPACE / "MESSAGE_BOARD.md"
-    archive = WORKSPACE / "MESSAGE_BOARD_ARCHIVE.md"
-
-    if not board.exists():
-        return
-
-    content = board.read_text()
-    header = "# Message Board\n\nTeam communication log.\n\n---\n\n"
-
-    if content.strip() == header.strip():
-        return
-
-    # Split into individual entries on the ### [...] header pattern
-    entry_pattern = re.compile(r'(### \[.+?\] .+?)(?=### \[|\Z)', re.DOTALL)
-    entries = entry_pattern.findall(content)
-
-    if not entries:
-        return
-
-    round_pattern = re.compile(r'### \[.+?\] Round (\d+)')
-    plan_pattern = re.compile(r'### \[.+?\] Planning (\d+)/\d+')
-    old_entries = []
-    keep_entries = []
-
-    for entry in entries:
-        m_round = round_pattern.match(entry)
-        m_plan = plan_pattern.match(entry)
-
-        if m_round:
-            if keep_round is not None and int(m_round.group(1)) < keep_round:
-                old_entries.append(entry)
-            else:
-                keep_entries.append(entry)
-        elif m_plan:
-            if keep_plan is not None and int(m_plan.group(1)) < keep_plan:
-                old_entries.append(entry)
-            elif keep_round is not None:
-                # Implementation started — archive all planning entries
-                old_entries.append(entry)
-            else:
-                keep_entries.append(entry)
-        else:
-            # Unknown format — keep to be safe
-            keep_entries.append(entry)
-
-    if not old_entries:
-        return  # nothing to archive
-
-    # Append old entries to archive
-    existing_archive = archive.read_text() if archive.exists() else ""
-    archive.write_text(existing_archive + "".join(old_entries) + "\n")
-
-    # Rewrite board with header + current round entries only
-    board.write_text(header + "".join(keep_entries))
-    log(f"{DIM}  (archived {len(old_entries)} old messages, kept {len(keep_entries)} from current round){RESET}")
-
-
-def append_to_board(agent: str, label: str, text: str):
-    board = WORKSPACE / "MESSAGE_BOARD.md"
-    ts = datetime.now().strftime("%H:%M:%S")
-    entry = f"### [{agent}] {label} — {ts}\n\n{text}\n\n---\n\n"
-    board.write_text(board.read_text() + entry)
-
-
-def _changes_since(agent: str) -> str:
-    """Get a summary of file changes since this agent's last commit."""
-    # Find this agent's last commit
-    result = _git("log", "--oneline", "--all", f"--grep=[{agent}]", "-1", "--format=%H")
-    last_hash = result.stdout.strip()
-    if not last_hash:
-        return "(first turn — no previous changes to show)"
-
-    # Get diff stat since that commit
-    diff = _git("diff", "--stat", last_hash, "HEAD")
-    if not diff.stdout.strip():
-        return "(no file changes since your last turn)"
-
-    # Also get short diff of non-binary files (capped to avoid huge output)
-    diff_detail = _git("diff", last_hash, "HEAD", "--", "*.py", "*.md")
-    detail = diff_detail.stdout.strip()
-    if len(detail) > 3000:
-        detail = detail[:3000] + "\n... (diff truncated)"
-
-    return f"{diff.stdout.strip()}\n\n{detail}" if detail else diff.stdout.strip()
-
-
-def build_prompt(agent: str, round_num: int, num_rounds: int, *,
-                  planning: bool = False, plan_round: int = 0, plan_total: int = 0) -> str:
-    tree    = workspace_tree()
-    gitlog  = recent_git_log()
-    changes = _changes_since(agent)
-
-    if planning:
-        if plan_round == 1:
-            phase = (
-                f"This is planning round {plan_round} of {plan_total}. "
-                "Propose ideas, react to teammates' proposals, flag disagreements."
-            )
-        elif plan_round < plan_total:
-            phase = (
-                f"This is planning round {plan_round} of {plan_total}. "
-                "Challenge the current plan: what's the weakest technical decision "
-                "so far? What would you do differently? Push back on anything you "
-                "accepted too easily in round 1."
-            )
-        else:
-            phase = (
-                f"This is the FINAL planning round ({plan_round} of {plan_total}). "
-                "Converge on a plan. State clearly what YOU will build in Round 1 "
-                "and what you need from others."
-            )
-        action = (
-            f"PLANNING — do NOT write any code or create files.\n"
-            f"{phase}\n"
-            "Read MESSAGE_BOARD.md, then discuss:\n"
-            "- What should the team prioritize first?\n"
-            "- What are the key dependencies — what must exist before what?\n"
-            "- What will YOU specifically work on in the first implementation round?"
-        )
-    else:
-        action = (
-            "Do your work for this turn. Start by reading MESSAGE_BOARD.md and any "
-            "relevant source files, then make your contribution."
-        )
-
-    return (
-        f"## Status — Round {round_num} of {num_rounds}\n\n"
-        f"### Workspace files\n{tree}\n\n"
-        f"### Recent git history\n{gitlog}\n\n"
-        f"### Changes since your last turn\n{changes}\n\n---\n\n"
-        f"{action}\n\n"
-        f"Focus on what changed — don't re-read files that haven't been modified.\n\n"
-        f"When finished, write a short summary of what you did and any notes "
-        f"for teammates."
-    )
-
-# ---------------------------------------------------------------------------
-# Agent runner
-# ---------------------------------------------------------------------------
-
-def _run_claude(prompt: str, system_prompt: str, model: str, effort: str,
-                 disallowed_tools: list[str], color: str, timeout: int = 600) -> tuple[str, float]:
-    """
-    Run a claude -p subprocess with stream-json output for real-time progress.
-    Prompt is piped via stdin to avoid arg-length issues.
-    Returns (final_text_output, elapsed_seconds).
-    """
-    cmd = [
-        "claude",
-        "-p",                                   # read prompt from stdin
-        "--system-prompt", system_prompt,
-        "--model", model,
-        "--effort", effort,
-        "--output-format", "stream-json",        # real-time event stream
-        "--verbose",                              # required for stream-json
-        "--no-session-persistence",
-        "--settings", str(SETTINGS_FILE),        # bubblewrap sandbox
-        "--permission-mode", "bypassPermissions",
-        "--disallowedTools", ",".join(disallowed_tools),
-    ]
-
-    start = time.time()
-    result_text = ""
-    text_chunks: list[str] = []     # fallback: collect text blocks in case budget cuts off
-    raw_events: list[str] = []      # full JSON stream for analysis
-
-    # Pass workspace path to the sandbox hook via env var
-    env = {**os.environ, "SANDBOX_ALLOWED_DIR": str(WORKSPACE)}
-
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,                           # line-buffered
-            cwd=str(WORKSPACE),
-            env=env,
-        )
-
-        # Send prompt via stdin and close
-        proc.stdin.write(prompt)
-        proc.stdin.close()
-
-        # Read stream-json events line by line (readline avoids read-ahead buffering)
-        while True:
-            line = proc.stdout.readline()
-            if not line:
-                break
-            line = line.strip()
-            if not line:
-                continue
-            raw_events.append(line)
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            etype = event.get("type", "")
-
-            # Show tool use and text activity in real time
-            if etype == "assistant" and "message" in event:
-                msg = event["message"]
-                content = msg.get("content", [])
-                for block in content:
-                    btype = block.get("type", "")
-                    if btype == "tool_use":
-                        tool = block.get("name", "?")
-                        log(f"{color}    [{tool}]{RESET}")
-                    elif btype == "text":
-                        text_chunks.append(block.get("text", ""))
-
-            # Final result
-            if etype == "result":
-                result_text = event.get("result", "")
-                subtype = event.get("subtype", "")
-                if subtype and subtype != "success":
-                    log(f"{DIM}    (stop: {subtype}){RESET}")
-
-        proc.wait(timeout=timeout)
-
-        # Fallback: if result is empty (e.g. budget exceeded), use collected text chunks
-        if not result_text and text_chunks:
-            result_text = "".join(text_chunks)
-            log(f"{DIM}    (using fallback text from stream){RESET}")
-
-        if proc.returncode != 0 and not result_text:
-            stderr = proc.stderr.read().strip()
-            result_text = f"(agent exited with code {proc.returncode})\n{stderr}"
-
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        result_text = "(agent timed out)"
-    except Exception as e:
-        result_text = f"(error: {e})"
-
-    elapsed = time.time() - start
-    return result_text.strip(), elapsed, raw_events
-
-
-def run_agent(agent: str, round_num: int, num_rounds: int, *,
-              planning: bool = False, plan_round: int = 0, plan_total: int = 0) -> str:
-    cfg              = AGENT_CONFIGS.get(agent, {})
-    model            = cfg.get("model", "sonnet")
-    effort           = cfg.get("effort", "medium")
-    disallowed_tools = list(set(ALWAYS_BLOCKED) | set(cfg.get("disallowed_tools", [])))
-    if planning:
-        # During planning, block all write tools — discussion only
-        disallowed_tools = list(set(disallowed_tools) | {"Bash", "Write", "Edit"})
-    system = SHARED_CONTEXT + "\n\n" + AGENT_ROLES[agent]
-    prompt = build_prompt(agent, round_num, num_rounds, planning=planning,
-                          plan_round=plan_round, plan_total=plan_total)
-    color  = COLORS.get(agent, "")
-
-    blocked = ",".join(disallowed_tools) if disallowed_tools else "(none)"
-    log(f"\n{color}{'=' * 60}")
-    log(f"  {agent} — Round {round_num}  ({model}, effort={effort})")
-    log(f"  blocked tools: {blocked}")
-    log(f"{'=' * 60}{RESET}")
-
-    output, elapsed, raw_events = _run_claude(prompt, system, model, effort, disallowed_tools, color)
-
-    # Show truncated output
-    if output:
-        log(f"{DIM}{output}{RESET}")
-    log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
-
-    # Log full output and raw JSON stream
-    if planning:
-        tag = f"plan_{plan_round:02d}"
-        label = f"Planning {plan_round}/{plan_total}"
-    else:
-        tag = f"round_{round_num:02d}"
-        label = f"Round {round_num}"
-    log_path = LOGS_DIR / f"{tag}_{agent.lower()}.md"
-    log_path.write_text(f"# {agent} — {label}\n\n{output}\n")
-    stream_path = LOGS_DIR / f"{tag}_{agent.lower()}.jsonl"
-    stream_path.write_text("\n".join(raw_events) + "\n")
-
-    # Append to message board and commit with descriptive message
-    if output:
-        append_to_board(agent, label, output)
-    # Use first line of agent output as commit summary
-    first_line = output.split("\n")[0][:72] if output else "no output"
-    commit_msg = f"[{agent}] R{round_num}: {first_line}"
-    changed = _git_commit(commit_msg)
-    log(f"{color}  {'changes committed' if changed else '(no file changes)'}{RESET}\n")
-
-    return output
-
-# ---------------------------------------------------------------------------
-# Facilitator & dynamic agent management
-# ---------------------------------------------------------------------------
-
-def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
-                     *, plan_round: int | None = None):
-    """Run the Facilitator meta-agent between rounds."""
-    color = COLORS["Facilitator"]
-
-    if plan_round is not None:
-        phase_label = f"after Planning {plan_round}"
-        log_tag = f"plan_{plan_round:02d}"
-    else:
-        phase_label = f"after Round {round_num}"
-        log_tag = f"round_{round_num:02d}"
-
-    log(f"\n{color}{'=' * 60}")
-    log(f"  Facilitator — {phase_label}  (sonnet, effort=medium)")
-    log(f"{'=' * 60}{RESET}")
-
-    tree   = workspace_tree()
-    gitlog = recent_git_log()
-    prompt = (
-        f"## Team Status — {phase_label} (of {num_rounds} total)\n\n"
-        f"Active agents: {', '.join(active_agents)}\n\n"
-        f"### Workspace files\n{tree}\n\n"
-        f"### Recent git history\n{gitlog}\n\n---\n\n"
-        f"Read MESSAGE_BOARD.md. Write MESSAGE_BOARD_SUMMARY.md. "
-        f"If any agent requested a new specialist or said their role is done, "
-        f"handle it via NEW_AGENT.json or RETIRE_AGENT.json."
-    )
-
-    blocked = ["Bash", "NotebookEdit", "WebFetch", "WebSearch"]
-    output, elapsed, raw_events = _run_claude(prompt, FACILITATOR_SYSTEM, "sonnet", "medium",
-                                               blocked, color, timeout=300)
-
-    if output:
-        log(f"{DIM}{output}{RESET}")
-    log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
-
-    log_path = LOGS_DIR / f"{log_tag}_facilitator.md"
-    log_path.write_text(f"# Facilitator — {phase_label}\n\n{output}\n")
-    stream_path = LOGS_DIR / f"{log_tag}_facilitator.jsonl"
-    stream_path.write_text("\n".join(raw_events) + "\n")
-
-    # Facilitator writes MESSAGE_BOARD_SUMMARY.md (and optionally NEW/RETIRE_AGENT.json).
-    # Its text output does NOT go to the message board — that's for agents only.
-
-    # Archive old messages, keep current round's messages at full fidelity
-    if plan_round is not None:
-        _archive_message_board(keep_plan=plan_round)
-    else:
-        _archive_message_board(keep_round=round_num)
-
-    _git_commit(f"[Facilitator] {phase_label}")
-
-    return output
-
-
-def check_for_new_agents(active_agents: list[str]) -> list[str]:
-    """Check if the Facilitator requested a new agent via NEW_AGENT.json."""
-    import json
-    new_agent_file = WORKSPACE / "NEW_AGENT.json"
-    if not new_agent_file.exists():
-        return active_agents
-
-    try:
-        data = json.loads(new_agent_file.read_text())
-        name = data["name"]
-        role_prompt = data["role_prompt"]
-
-        if name not in AGENT_ROLES:
-            AGENT_ROLES[name] = role_prompt
-            AGENT_CONFIGS[name] = {
-                "model": "sonnet",             # ignore model from JSON — always sonnet
-                "effort": "medium",            # ignore effort from JSON — always medium
-                "disallowed_tools": [],        # ALWAYS_BLOCKED applied in run_agent
-                "role_prompt": role_prompt[:2000],  # length-limit the prompt
-            }
-            COLORS.setdefault(name, "\033[1;36m")  # cyan for dynamic agents
-            active_agents.append(name)
-            log(f"\n{BOLD}  + New agent recruited: {name}{RESET}")
-        new_agent_file.unlink()
-        _git_commit(f"Recruited new agent: {name}")
-    except (json.JSONDecodeError, KeyError) as e:
-        log(f"{DIM}  (invalid NEW_AGENT.json: {e}){RESET}")
-
-    return active_agents
-
-
-def check_for_retirements(active_agents: list[str]) -> list[str]:
-    """Check if the Facilitator requested retiring an agent via RETIRE_AGENT.json."""
-    import json
-    retire_file = WORKSPACE / "RETIRE_AGENT.json"
-    if not retire_file.exists():
-        return active_agents
-
-    try:
-        data = json.loads(retire_file.read_text())
-        name = data["name"]
-        reason = data.get("reason", "no reason given")
-
-        if name in active_agents:
-            active_agents.remove(name)
-            log(f"\n{BOLD}  - Agent retired: {name} ({reason}){RESET}")
-        retire_file.unlink()
-        _git_commit(f"Retired agent: {name} — {reason}")
-    except (json.JSONDecodeError, KeyError) as e:
-        log(f"{DIM}  (invalid RETIRE_AGENT.json: {e}){RESET}")
-
-    return active_agents
+    return settings_file
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-def _detect_resume_state(agents: list[str]) -> tuple[int, list[str]]:
-    """Parse workspace git log to find where to resume.
-
-    Returns (last_complete_round, remaining_agents_in_partial_round).
-    If the last round was interrupted, remaining_agents lists who still
-    needs to go. If it was complete, remaining_agents is empty.
-    """
-    import re
-    result = _git("log", "--oneline", "--all")
-    if not result.stdout.strip():
-        return 0, []
-
-    pattern = re.compile(r'\[(.+?)\] R(\d+):')
-    rounds: dict[int, set[str]] = {}
-    for line in result.stdout.splitlines():
-        m = pattern.search(line)
-        if m:
-            agent_name, round_num = m.group(1), int(m.group(2))
-            rounds.setdefault(round_num, set()).add(agent_name)
-
-    if not rounds:
-        return 0, []
-
-    max_round = max(rounds.keys())
-    completed_agents = rounds[max_round]
-    all_agents = set(agents)
-
-    if completed_agents >= all_agents:
-        # Last round fully complete
-        return max_round, []
-    else:
-        # Last round was interrupted — figure out who still needs to go
-        remaining = [a for a in agents if a not in completed_agents]
-        return max_round - 1, remaining
-
-
 def main():
     parser = argparse.ArgumentParser(description="Multi-agent emergent-behavior experiment")
     parser.add_argument("--rounds", type=int, default=3,
                         help="Number of rounds to run (default: 3)")
     parser.add_argument("--resume", type=str, metavar="RUN_DIR",
-                        help="Resume a previous run (pass the run directory name under runs/)")
+                        help="Resume a previous run (directory name under runs/)")
     parser.add_argument("--agents", nargs="+", choices=AGENTS, default=AGENTS,
                         help="Which agents to include")
     parser.add_argument("--no-facilitator", action="store_true",
@@ -806,8 +108,7 @@ def main():
                         help="Run Facilitator every N rounds (default: 1)")
     args = parser.parse_args()
 
-    # Set up run directory
-    global WORKSPACE, LOGS_DIR
+    # --- Run directory ---
     RUNS_DIR.mkdir(exist_ok=True)
 
     if args.resume:
@@ -817,31 +118,26 @@ def main():
             sys.exit(1)
         resume = True
     else:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_dir = RUNS_DIR / ts
+        run_dir = RUNS_DIR / datetime.now().strftime("%Y%m%d_%H%M%S")
         run_dir.mkdir()
         resume = False
 
-    WORKSPACE = run_dir / "workspace"
-    LOGS_DIR  = run_dir / "logs"
-
+    workspace = run_dir / "workspace"
+    logs_dir  = run_dir / "logs"
     active_agents = list(args.agents)
     use_facilitator = not args.no_facilitator
 
-    setup(resume=resume)
+    settings_file = setup(workspace, logs_dir, resume)
 
-    # Determine round range
-    partial_agents = []  # agents who still need to go in an interrupted round
+    # --- Round range ---
+    partial_agents = []
     if resume:
-        last_complete, partial_agents = _detect_resume_state(active_agents)
+        last_complete, partial_agents = detect_resume_state(workspace, active_agents)
+        start_round = last_complete + 1
+        end_round = last_complete + args.rounds
         if partial_agents:
-            start_round = last_complete + 1  # resume the interrupted round
-            end_round = last_complete + args.rounds
             log(f"{BOLD}  Resuming interrupted round {start_round} "
                 f"({', '.join(partial_agents)} still to go){RESET}")
-        else:
-            start_round = last_complete + 1
-            end_round = last_complete + args.rounds
     else:
         start_round = 1
         end_round = args.rounds
@@ -856,18 +152,13 @@ def main():
   Agents      : {', '.join(active_agents)}
   Planning    : {'skip (resuming)' if resume else f"{args.planning_rounds} rounds"}
   Facilitator : {'every ' + str(args.facilitator_every) + ' rounds' if use_facilitator else 'disabled'}
-  Rounds      : {start_round} to {end_round}{f' (resuming from {start_round})' if resume else ''}
-  Workspace   : {WORKSPACE}
+  Rounds      : {start_round} to {end_round}{f' (resuming)' if resume else ''}
+  Workspace   : {workspace}
 """)
 
-    # No TEAM_DIRECTIVES.md — the Facilitator only writes summaries.
-    # Agents read MESSAGE_BOARD_SUMMARY.md for context on older rounds.
-
     try:
-        # Planning rounds: agents discuss priorities before anyone writes code
-        if resume or args.planning_rounds == 0:
-            pass  # skip planning on resume or if disabled
-        else:
+        # --- Planning ---
+        if not resume and args.planning_rounds > 0:
             for plan_round in range(1, args.planning_rounds + 1):
                 log(f"\n{BOLD}{'#' * 60}")
                 log(f"  PLANNING {plan_round}/{args.planning_rounds} — no code, just coordination")
@@ -875,8 +166,10 @@ def main():
                 log(f"{'#' * 60}{RESET}")
 
                 for agent in active_agents:
-                    run_agent(agent, 0, args.rounds, planning=True,
-                              plan_round=plan_round, plan_total=args.planning_rounds)
+                    run_agent(workspace, logs_dir, settings_file,
+                              agent, 0, end_round,
+                              planning=True, plan_round=plan_round,
+                              plan_total=args.planning_rounds)
                     if _shutdown_requested:
                         break
 
@@ -885,14 +178,14 @@ def main():
                 if _shutdown_requested:
                     break
 
-                # Facilitator after each planning round (including the last one,
-                # so planning gets summarized before implementation starts)
                 if use_facilitator:
-                    run_facilitator(0, args.rounds, active_agents, plan_round=plan_round)
+                    run_facilitator(workspace, logs_dir, settings_file,
+                                    0, end_round, active_agents,
+                                    plan_round=plan_round)
 
+        # --- Implementation ---
         if not _shutdown_requested:
             for round_num in range(start_round, end_round + 1):
-                # For an interrupted round, only run the remaining agents
                 if partial_agents and round_num == start_round:
                     agents_this_round = partial_agents
                 else:
@@ -904,7 +197,8 @@ def main():
                 log(f"{'#' * 60}{RESET}")
 
                 for agent in agents_this_round:
-                    run_agent(agent, round_num, end_round)
+                    run_agent(workspace, logs_dir, settings_file,
+                              agent, round_num, end_round)
                     if _shutdown_requested:
                         break
 
@@ -913,11 +207,11 @@ def main():
                 if _shutdown_requested:
                     break
 
-                # Run Facilitator between rounds
                 if use_facilitator and round_num % args.facilitator_every == 0:
-                    run_facilitator(round_num, args.rounds, active_agents)
-                    active_agents = check_for_new_agents(active_agents)
-                    active_agents = check_for_retirements(active_agents)
+                    run_facilitator(workspace, logs_dir, settings_file,
+                                    round_num, end_round, active_agents)
+                    active_agents = check_for_new_agents(workspace, active_agents)
+                    active_agents = check_for_retirements(workspace, active_agents)
 
         if _shutdown_requested:
             log(f"\n{BOLD}Experiment stopped after current agent finished.{RESET}")
@@ -925,14 +219,13 @@ def main():
     except Exception as e:
         log(f"\n{BOLD}Experiment error: {e}{RESET}")
 
-    # Summary
     log(f"""
 {BOLD}Experiment complete.{RESET}
   Run       : {run_dir.name}
-  Workspace : {WORKSPACE}
-  Logs      : {LOGS_DIR}
-  Git log   : cd {WORKSPACE} && git log --oneline
-  Run game  : cd {WORKSPACE} && python3 main.py
+  Workspace : {workspace}
+  Logs      : {logs_dir}
+  Git log   : cd {workspace} && git log --oneline
+  Run game  : cd {workspace} && python3 main.py
   Resume    : python3 orchestrator.py --resume {run_dir.name} --rounds N
 """)
 

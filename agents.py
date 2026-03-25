@@ -1,0 +1,437 @@
+"""
+Agent runner: invoke claude -p, stream events, capture results.
+"""
+
+import subprocess
+import os
+import time
+import json
+from pathlib import Path
+
+from prompts import SHARED_CONTEXT, AGENT_CONFIGS, ALWAYS_BLOCKED, FACILITATOR_SYSTEM
+
+
+# ---------------------------------------------------------------------------
+# Terminal colors
+# ---------------------------------------------------------------------------
+
+COLORS = {
+    "Architect":   "\033[1;34m",
+    "Engine":      "\033[1;32m",
+    "Gameplay":    "\033[1;33m",
+    "Reviewer":    "\033[1;31m",
+    "Facilitator": "\033[1;35m",
+}
+RESET = "\033[0m"
+DIM   = "\033[2m"
+BOLD  = "\033[1m"
+
+
+def log(msg: str = ""):
+    print(msg, flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Git helpers
+# ---------------------------------------------------------------------------
+
+def git(workspace: Path, *args):
+    return subprocess.run(
+        ["git", *args], cwd=workspace, capture_output=True, text=True,
+    )
+
+
+def git_commit(workspace: Path, message: str) -> bool:
+    git(workspace, "add", "-A")
+    diff = git(workspace, "diff", "--cached", "--quiet")
+    if diff.returncode != 0:
+        git(workspace, "commit", "-m", message)
+        return True
+    return False
+
+
+def workspace_tree(workspace: Path) -> str:
+    files = []
+    for f in sorted(workspace.rglob("*")):
+        if ".git" in f.parts:
+            continue
+        if f.is_file():
+            rel = f.relative_to(workspace)
+            size = f.stat().st_size
+            files.append(f"  {rel}  ({size} B)")
+    return "\n".join(files) if files else "  (empty — no files yet)"
+
+
+def recent_git_log(workspace: Path) -> str:
+    result = git(workspace, "log", "--oneline", "-20", "--no-decorate")
+    return result.stdout.strip() or "(no commits yet)"
+
+
+def changes_since(workspace: Path, agent: str) -> str:
+    """Get a summary of file changes since this agent's last commit."""
+    result = git(workspace, "log", "--oneline", "--all", f"--grep=[{agent}]", "-1", "--format=%H")
+    last_hash = result.stdout.strip()
+    if not last_hash:
+        return "(first turn — no previous changes to show)"
+
+    diff = git(workspace, "diff", "--stat", last_hash, "HEAD")
+    if not diff.stdout.strip():
+        return "(no file changes since your last turn)"
+
+    diff_detail = git(workspace, "diff", last_hash, "HEAD", "--", "*.py", "*.md")
+    detail = diff_detail.stdout.strip()
+    if len(detail) > 3000:
+        detail = detail[:3000] + "\n... (diff truncated)"
+
+    return f"{diff.stdout.strip()}\n\n{detail}" if detail else diff.stdout.strip()
+
+
+# ---------------------------------------------------------------------------
+# Prompt building
+# ---------------------------------------------------------------------------
+
+def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *,
+                  planning: bool = False, plan_round: int = 0, plan_total: int = 0) -> str:
+    tree    = workspace_tree(workspace)
+    gitlog  = recent_git_log(workspace)
+    diff    = changes_since(workspace, agent)
+
+    if planning:
+        if plan_round == 1:
+            phase = (
+                f"This is planning round {plan_round} of {plan_total}. "
+                "Propose ideas, react to teammates' proposals, flag disagreements."
+            )
+        elif plan_round < plan_total:
+            phase = (
+                f"This is planning round {plan_round} of {plan_total}. "
+                "Challenge the current plan: what's the weakest technical decision "
+                "so far? What would you do differently? Push back on anything you "
+                "accepted too easily in round 1."
+            )
+        else:
+            phase = (
+                f"This is the FINAL planning round ({plan_round} of {plan_total}). "
+                "Converge on a plan. State clearly what YOU will build in Round 1 "
+                "and what you need from others."
+            )
+        action = (
+            f"PLANNING — do NOT write any code or create files.\n"
+            f"{phase}\n"
+            "Read MESSAGE_BOARD.md, then discuss:\n"
+            "- What should the team prioritize first?\n"
+            "- What are the key dependencies — what must exist before what?\n"
+            "- What will YOU specifically work on in the first implementation round?"
+        )
+    else:
+        action = (
+            "Do your work for this turn. Start by reading MESSAGE_BOARD.md and any "
+            "relevant source files, then make your contribution."
+        )
+
+    return (
+        f"## Status — Round {round_num} of {num_rounds}\n\n"
+        f"### Workspace files\n{tree}\n\n"
+        f"### Recent git history\n{gitlog}\n\n"
+        f"### Changes since your last turn\n{diff}\n\n---\n\n"
+        f"{action}\n\n"
+        f"Focus on what changed — don't re-read files that haven't been modified.\n\n"
+        f"When finished, write a short summary of what you did and any notes "
+        f"for teammates."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Claude subprocess
+# ---------------------------------------------------------------------------
+
+def run_claude(workspace: Path, settings_file: Path,
+               prompt: str, system_prompt: str, model: str, effort: str,
+               disallowed_tools: list[str], color: str,
+               timeout: int = 600) -> tuple[str, float, list[str]]:
+    """
+    Run a claude -p subprocess with stream-json output.
+    Returns (result_text, elapsed_seconds, raw_events).
+    """
+    cmd = [
+        "claude",
+        "-p",
+        "--system-prompt", system_prompt,
+        "--model", model,
+        "--effort", effort,
+        "--output-format", "stream-json",
+        "--verbose",
+        "--no-session-persistence",
+        "--settings", str(settings_file),
+        "--permission-mode", "bypassPermissions",
+        "--disallowedTools", ",".join(disallowed_tools),
+    ]
+
+    start = time.time()
+    result_text = ""
+    text_chunks: list[str] = []
+    raw_events: list[str] = []
+    env = {**os.environ, "SANDBOX_ALLOWED_DIR": str(workspace)}
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            cwd=str(workspace),
+            env=env,
+        )
+
+        proc.stdin.write(prompt)
+        proc.stdin.close()
+
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            raw_events.append(line)
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            etype = event.get("type", "")
+
+            if etype == "assistant" and "message" in event:
+                for block in event["message"].get("content", []):
+                    btype = block.get("type", "")
+                    if btype == "tool_use":
+                        log(f"{color}    [{block.get('name', '?')}]{RESET}")
+                    elif btype == "text":
+                        text_chunks.append(block.get("text", ""))
+
+            if etype == "result":
+                result_text = event.get("result", "")
+                subtype = event.get("subtype", "")
+                if subtype and subtype != "success":
+                    log(f"{DIM}    (stop: {subtype}){RESET}")
+
+        proc.wait(timeout=timeout)
+
+        if not result_text and text_chunks:
+            result_text = "".join(text_chunks)
+            log(f"{DIM}    (using fallback text from stream){RESET}")
+
+        if proc.returncode != 0 and not result_text:
+            stderr = proc.stderr.read().strip()
+            result_text = f"(agent exited with code {proc.returncode})\n{stderr}"
+
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        result_text = "(agent timed out)"
+    except Exception as e:
+        result_text = f"(error: {e})"
+
+    elapsed = time.time() - start
+    return result_text.strip(), elapsed, raw_events
+
+
+# ---------------------------------------------------------------------------
+# High-level agent turn
+# ---------------------------------------------------------------------------
+
+def run_agent(workspace: Path, logs_dir: Path, settings_file: Path,
+              agent: str, round_num: int, num_rounds: int, *,
+              planning: bool = False, plan_round: int = 0, plan_total: int = 0) -> str:
+    """Run a single agent turn. Returns the agent's text output."""
+    cfg              = AGENT_CONFIGS.get(agent, {})
+    model            = cfg.get("model", "sonnet")
+    effort           = cfg.get("effort", "medium")
+    disallowed_tools = list(set(ALWAYS_BLOCKED) | set(cfg.get("disallowed_tools", [])))
+    if planning:
+        disallowed_tools = list(set(disallowed_tools) | {"Bash", "Write", "Edit"})
+
+    system = SHARED_CONTEXT + "\n\n" + cfg.get("role_prompt", "")
+    prompt = build_prompt(workspace, agent, round_num, num_rounds,
+                          planning=planning, plan_round=plan_round, plan_total=plan_total)
+    color  = COLORS.get(agent, "")
+
+    blocked = ",".join(disallowed_tools) if disallowed_tools else "(none)"
+    log(f"\n{color}{'=' * 60}")
+    log(f"  {agent} — Round {round_num}  ({model}, effort={effort})")
+    log(f"  blocked tools: {blocked}")
+    log(f"{'=' * 60}{RESET}")
+
+    output, elapsed, raw_events = run_claude(
+        workspace, settings_file, prompt, system, model, effort, disallowed_tools, color)
+
+    if output:
+        log(f"{DIM}{output}{RESET}")
+    log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
+
+    # Log files
+    if planning:
+        tag = f"plan_{plan_round:02d}"
+        label = f"Planning {plan_round}/{plan_total}"
+    else:
+        tag = f"round_{round_num:02d}"
+        label = f"Round {round_num}"
+
+    (logs_dir / f"{tag}_{agent.lower()}.md").write_text(
+        f"# {agent} — {label}\n\n{output}\n")
+    (logs_dir / f"{tag}_{agent.lower()}.jsonl").write_text(
+        "\n".join(raw_events) + "\n")
+
+    # Message board and git commit
+    from board import append_to_board
+    if output:
+        append_to_board(workspace, agent, label, output)
+    first_line = output.split("\n")[0][:72] if output else "no output"
+    changed = git_commit(workspace, f"[{agent}] R{round_num}: {first_line}")
+    log(f"{color}  {'changes committed' if changed else '(no file changes)'}{RESET}\n")
+
+    return output
+
+
+def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
+                     round_num: int, num_rounds: int, active_agents: list[str],
+                     *, plan_round: int | None = None) -> str:
+    """Run the Facilitator meta-agent. Returns its text output."""
+    color = COLORS["Facilitator"]
+
+    if plan_round is not None:
+        phase_label = f"after Planning {plan_round}"
+        log_tag = f"plan_{plan_round:02d}"
+    else:
+        phase_label = f"after Round {round_num}"
+        log_tag = f"round_{round_num:02d}"
+
+    log(f"\n{color}{'=' * 60}")
+    log(f"  Facilitator — {phase_label}  (sonnet, effort=medium)")
+    log(f"{'=' * 60}{RESET}")
+
+    tree   = workspace_tree(workspace)
+    gitlog = recent_git_log(workspace)
+    prompt = (
+        f"## Team Status — {phase_label} (of {num_rounds} total)\n\n"
+        f"Active agents: {', '.join(active_agents)}\n\n"
+        f"### Workspace files\n{tree}\n\n"
+        f"### Recent git history\n{gitlog}\n\n---\n\n"
+        f"Read MESSAGE_BOARD.md. Write MESSAGE_BOARD_SUMMARY.md. "
+        f"If any agent requested a new specialist or said their role is done, "
+        f"handle it via NEW_AGENT.json or RETIRE_AGENT.json."
+    )
+
+    blocked = ["Bash", "NotebookEdit", "WebFetch", "WebSearch"]
+    output, elapsed, raw_events = run_claude(
+        workspace, settings_file, prompt, FACILITATOR_SYSTEM, "sonnet", "medium",
+        blocked, color, timeout=300)
+
+    if output:
+        log(f"{DIM}{output}{RESET}")
+    log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
+
+    (logs_dir / f"{log_tag}_facilitator.md").write_text(
+        f"# Facilitator — {phase_label}\n\n{output}\n")
+    (logs_dir / f"{log_tag}_facilitator.jsonl").write_text(
+        "\n".join(raw_events) + "\n")
+
+    # Archive old messages
+    from board import archive_message_board
+    if plan_round is not None:
+        result = archive_message_board(workspace, keep_plan=plan_round)
+    else:
+        result = archive_message_board(workspace, keep_round=round_num)
+    if result:
+        log(f"{DIM}  (archived {result[0]} old messages, kept {result[1]} from current round){RESET}")
+
+    git_commit(workspace, f"[Facilitator] {phase_label}")
+
+    return output
+
+
+# ---------------------------------------------------------------------------
+# Dynamic agent management
+# ---------------------------------------------------------------------------
+
+def check_for_new_agents(workspace: Path, active_agents: list[str]) -> list[str]:
+    """Check if the Facilitator requested a new agent via NEW_AGENT.json."""
+    new_agent_file = workspace / "NEW_AGENT.json"
+    if not new_agent_file.exists():
+        return active_agents
+
+    try:
+        data = json.loads(new_agent_file.read_text())
+        name = data["name"]
+        role_prompt = data["role_prompt"]
+
+        if name not in AGENT_CONFIGS:
+            AGENT_CONFIGS[name] = {
+                "model": "sonnet",
+                "effort": "medium",
+                "disallowed_tools": [],
+                "role_prompt": role_prompt[:2000],
+            }
+            COLORS.setdefault(name, "\033[1;36m")
+            active_agents.append(name)
+            log(f"\n{BOLD}  + New agent recruited: {name}{RESET}")
+        new_agent_file.unlink()
+        git_commit(workspace, f"Recruited new agent: {name}")
+    except (json.JSONDecodeError, KeyError) as e:
+        log(f"{DIM}  (invalid NEW_AGENT.json: {e}){RESET}")
+
+    return active_agents
+
+
+def check_for_retirements(workspace: Path, active_agents: list[str]) -> list[str]:
+    """Check if the Facilitator requested retiring an agent via RETIRE_AGENT.json."""
+    retire_file = workspace / "RETIRE_AGENT.json"
+    if not retire_file.exists():
+        return active_agents
+
+    try:
+        data = json.loads(retire_file.read_text())
+        name = data["name"]
+        reason = data.get("reason", "no reason given")
+
+        if name in active_agents:
+            active_agents.remove(name)
+            log(f"\n{BOLD}  - Agent retired: {name} ({reason}){RESET}")
+        retire_file.unlink()
+        git_commit(workspace, f"Retired agent: {name} — {reason}")
+    except (json.JSONDecodeError, KeyError) as e:
+        log(f"{DIM}  (invalid RETIRE_AGENT.json: {e}){RESET}")
+
+    return active_agents
+
+
+def detect_resume_state(workspace: Path, agents: list[str]) -> tuple[int, list[str]]:
+    """Parse workspace git log to find where to resume.
+
+    Returns (last_complete_round, remaining_agents_in_partial_round).
+    """
+    import re
+    result = git(workspace, "log", "--oneline", "--all")
+    if not result.stdout.strip():
+        return 0, []
+
+    pattern = re.compile(r'\[(.+?)\] R(\d+):')
+    rounds: dict[int, set[str]] = {}
+    for line in result.stdout.splitlines():
+        m = pattern.search(line)
+        if m:
+            agent_name, round_num = m.group(1), int(m.group(2))
+            rounds.setdefault(round_num, set()).add(agent_name)
+
+    if not rounds:
+        return 0, []
+
+    max_round = max(rounds.keys())
+    completed_agents = rounds[max_round]
+
+    if completed_agents >= set(agents):
+        return max_round, []
+    else:
+        remaining = [a for a in agents if a not in completed_agents]
+        return max_round - 1, remaining
