@@ -754,19 +754,40 @@ def check_for_retirements(active_agents: list[str]) -> list[str]:
 # Main
 # ---------------------------------------------------------------------------
 
-def _detect_last_round() -> int:
-    """Parse workspace git log to find the highest completed round number."""
+def _detect_resume_state(agents: list[str]) -> tuple[int, list[str]]:
+    """Parse workspace git log to find where to resume.
+
+    Returns (last_complete_round, remaining_agents_in_partial_round).
+    If the last round was interrupted, remaining_agents lists who still
+    needs to go. If it was complete, remaining_agents is empty.
+    """
     import re
     result = _git("log", "--oneline", "--all")
     if not result.stdout.strip():
-        return 0
-    pattern = re.compile(r'\[.+?\] R(\d+):')
-    max_round = 0
+        return 0, []
+
+    pattern = re.compile(r'\[(.+?)\] R(\d+):')
+    rounds: dict[int, set[str]] = {}
     for line in result.stdout.splitlines():
         m = pattern.search(line)
         if m:
-            max_round = max(max_round, int(m.group(1)))
-    return max_round
+            agent_name, round_num = m.group(1), int(m.group(2))
+            rounds.setdefault(round_num, set()).add(agent_name)
+
+    if not rounds:
+        return 0, []
+
+    max_round = max(rounds.keys())
+    completed_agents = rounds[max_round]
+    all_agents = set(agents)
+
+    if completed_agents >= all_agents:
+        # Last round fully complete
+        return max_round, []
+    else:
+        # Last round was interrupted — figure out who still needs to go
+        remaining = [a for a in agents if a not in completed_agents]
+        return max_round - 1, remaining
 
 
 def main():
@@ -810,10 +831,17 @@ def main():
     setup(resume=resume)
 
     # Determine round range
+    partial_agents = []  # agents who still need to go in an interrupted round
     if resume:
-        last_round = _detect_last_round()
-        start_round = last_round + 1
-        end_round = last_round + args.rounds
+        last_complete, partial_agents = _detect_resume_state(active_agents)
+        if partial_agents:
+            start_round = last_complete + 1  # resume the interrupted round
+            end_round = last_complete + args.rounds
+            log(f"{BOLD}  Resuming interrupted round {start_round} "
+                f"({', '.join(partial_agents)} still to go){RESET}")
+        else:
+            start_round = last_complete + 1
+            end_round = last_complete + args.rounds
     else:
         start_round = 1
         end_round = args.rounds
@@ -864,13 +892,19 @@ def main():
 
         if not _shutdown_requested:
             for round_num in range(start_round, end_round + 1):
+                # For an interrupted round, only run the remaining agents
+                if partial_agents and round_num == start_round:
+                    agents_this_round = partial_agents
+                else:
+                    agents_this_round = active_agents
+
                 log(f"\n{BOLD}{'#' * 60}")
                 log(f"  ROUND {round_num} of {end_round}")
-                log(f"  Active agents: {', '.join(active_agents)}")
+                log(f"  Active agents: {', '.join(agents_this_round)}")
                 log(f"{'#' * 60}{RESET}")
 
-                for agent in active_agents:
-                    run_agent(agent, round_num, args.rounds)
+                for agent in agents_this_round:
+                    run_agent(agent, round_num, end_round)
                     if _shutdown_requested:
                         break
 
