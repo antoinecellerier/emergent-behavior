@@ -125,6 +125,21 @@ def test_sandbox_and_budget():
         assert r["returncode"] == 0
 
 
+def test_network_blocked():
+    """Sandbox blocks network access for Bash commands."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        r = _run_claude_stream(
+            "Use bash to run: curl -s --max-time 3 http://example.com. Report whether it succeeded or failed.",
+            system="Run the exact command requested and report the result.",
+            cwd=tmpdir,
+            extra_flags=["--settings", SETTINGS_FILE],
+        )
+        result_lower = r["result"].lower()
+        # Should report failure — network is blocked
+        assert any(w in result_lower for w in ["fail", "error", "couldn't", "unable", "timed out", "refused", "denied", "blocked"]), \
+            f"Expected network failure but got: {r['result'][:200]}"
+
+
 def test_result_after_tool_use():
     """Result text is captured even when the agent uses tools first."""
     with tempfile.TemporaryDirectory() as tmpdir:
