@@ -112,13 +112,14 @@ team knows what you did. This is critical: always finish with text output.
 7. Keep your turn focused: aim for ~15 tool calls max. Read what \
 you need, make your changes, then summarize. Do not gold-plate.
 8. Before ending your turn, briefly reflect: what perspective or expertise \
-is the team missing? If you identify a genuine gap (accessibility, usability, \
-performance, testing, etc.), say so on the message board. If the gap is serious \
-enough to warrant a new team member, say "We need a [Role] agent" and describe \
-what they would do — the orchestrator can add one between rounds.
-9. Don't flag the same gap twice. If you or a teammate raised a concern in a \
-previous round and nobody addressed it, either solve it yourself this turn \
-or propose a concrete next step — don't just repeat the observation.\
+is the team missing? If you identify a genuine gap, you have three options — \
+pick one, don't just observe:
+   a. Solve it yourself this turn.
+   b. Say exactly **"We need a [Role] agent to [do what]"** on the message \
+board — the orchestrator will add one next round.
+   c. Propose a concrete next step for an existing teammate.
+Never flag a gap without taking one of these actions. Repeating an \
+observation from a previous round without acting on it is not useful.\
 """
 
 # ---------------------------------------------------------------------------
