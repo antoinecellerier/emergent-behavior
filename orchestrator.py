@@ -141,7 +141,11 @@ function signatures, data structures, and module boundaries in the architecture 
 
 IMPORTANT: Do NOT create implementation files or skeleton code. Your teammates \
 will write their own code based on your architecture doc. Your deliverable is \
-ARCHITECTURE.md (and updates to it), not .py files. Trust your team.\
+ARCHITECTURE.md (and updates to it), not .py files. Trust your team.
+
+If the architecture is settled and no teammate raised issues on the message \
+board, keep your turn short: say "Architecture is stable, no changes needed" \
+and move on. Do not re-read or re-edit a document that doesn't need updating.\
 """,
     },
 
@@ -322,11 +326,11 @@ def recent_git_log() -> str:
     return result.stdout.strip() or "(no commits yet)"
 
 
-def _archive_message_board(keep_round: int):
-    """Archive old messages, keep the current round's messages on the board.
+def _archive_message_board(*, keep_round: int | None = None, keep_plan: int | None = None):
+    """Archive old messages, keep only the most recent round's messages.
 
-    Messages are formatted as: ### [Agent] Round N — HH:MM:SS
-    Only messages from rounds < keep_round are moved to the archive.
+    Pass keep_round=N for implementation rounds, keep_plan=N for planning rounds.
+    Messages older than the keep threshold are moved to the archive.
     """
     import re
     board = WORKSPACE / "MESSAGE_BOARD.md"
@@ -348,27 +352,31 @@ def _archive_message_board(keep_round: int):
     if not entries:
         return
 
-    # Separate old entries from current round entries
-    # Matches "Round N" in headers; planning entries ("Planning 1/3") have no
-    # round number and are always archived when implementation starts.
     round_pattern = re.compile(r'### \[.+?\] Round (\d+)')
+    plan_pattern = re.compile(r'### \[.+?\] Planning (\d+)/\d+')
     old_entries = []
     keep_entries = []
 
     for entry in entries:
-        m = round_pattern.match(entry)
-        if m:
-            # Implementation round entry — keep if >= keep_round
-            if int(m.group(1)) < keep_round:
+        m_round = round_pattern.match(entry)
+        m_plan = plan_pattern.match(entry)
+
+        if m_round:
+            if keep_round is not None and int(m_round.group(1)) < keep_round:
+                old_entries.append(entry)
+            else:
+                keep_entries.append(entry)
+        elif m_plan:
+            if keep_plan is not None and int(m_plan.group(1)) < keep_plan:
+                old_entries.append(entry)
+            elif keep_round is not None:
+                # Implementation started — archive all planning entries
                 old_entries.append(entry)
             else:
                 keep_entries.append(entry)
         else:
-            # Planning entry — archive once implementation starts
-            if keep_round > 0:
-                old_entries.append(entry)
-            else:
-                keep_entries.append(entry)
+            # Unknown format — keep to be safe
+            keep_entries.append(entry)
 
     if not old_entries:
         return  # nothing to archive
@@ -389,10 +397,33 @@ def append_to_board(agent: str, label: str, text: str):
     board.write_text(board.read_text() + entry)
 
 
+def _changes_since(agent: str) -> str:
+    """Get a summary of file changes since this agent's last commit."""
+    # Find this agent's last commit
+    result = _git("log", "--oneline", "--all", f"--grep=[{agent}]", "-1", "--format=%H")
+    last_hash = result.stdout.strip()
+    if not last_hash:
+        return "(first turn — no previous changes to show)"
+
+    # Get diff stat since that commit
+    diff = _git("diff", "--stat", last_hash, "HEAD")
+    if not diff.stdout.strip():
+        return "(no file changes since your last turn)"
+
+    # Also get short diff of non-binary files (capped to avoid huge output)
+    diff_detail = _git("diff", last_hash, "HEAD", "--", "*.py", "*.md")
+    detail = diff_detail.stdout.strip()
+    if len(detail) > 3000:
+        detail = detail[:3000] + "\n... (diff truncated)"
+
+    return f"{diff.stdout.strip()}\n\n{detail}" if detail else diff.stdout.strip()
+
+
 def build_prompt(agent: str, round_num: int, num_rounds: int, *,
                   planning: bool = False, plan_round: int = 0, plan_total: int = 0) -> str:
     tree    = workspace_tree()
     gitlog  = recent_git_log()
+    changes = _changes_since(agent)
 
     if planning:
         if plan_round < plan_total:
@@ -423,8 +454,10 @@ def build_prompt(agent: str, round_num: int, num_rounds: int, *,
     return (
         f"## Status — Round {round_num} of {num_rounds}\n\n"
         f"### Workspace files\n{tree}\n\n"
-        f"### Recent git history\n{gitlog}\n\n---\n\n"
+        f"### Recent git history\n{gitlog}\n\n"
+        f"### Changes since your last turn\n{changes}\n\n---\n\n"
         f"{action}\n\n"
+        f"Focus on what changed — don't re-read files that haven't been modified.\n\n"
         f"When finished, write a short summary of what you did and any notes "
         f"for teammates."
     )
@@ -633,7 +666,10 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
     # Its text output does NOT go to the message board — that's for agents only.
 
     # Archive old messages, keep current round's messages at full fidelity
-    _archive_message_board(keep_round=round_num)
+    if plan_round is not None:
+        _archive_message_board(keep_plan=plan_round)
+    else:
+        _archive_message_board(keep_round=round_num)
 
     _git_commit(f"[Facilitator] {phase_label}")
 
@@ -777,8 +813,9 @@ def main():
                 if _shutdown_requested:
                     break
 
-                # Facilitator between planning rounds (not after the last one)
-                if use_facilitator and plan_round < args.planning_rounds:
+                # Facilitator after each planning round (including the last one,
+                # so planning gets summarized before implementation starts)
+                if use_facilitator:
                     run_facilitator(0, args.rounds, active_agents, plan_round=plan_round)
 
         if not _shutdown_requested:
