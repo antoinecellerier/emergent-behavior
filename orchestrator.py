@@ -330,23 +330,33 @@ def _archive_message_board(keep_round: int):
         return
 
     # Split into individual entries on the ### [...] header pattern
-    entry_pattern = re.compile(r'(### \[.+?\] Round \d+.*?)(?=### \[|\Z)', re.DOTALL)
+    entry_pattern = re.compile(r'(### \[.+?\] .+?)(?=### \[|\Z)', re.DOTALL)
     entries = entry_pattern.findall(content)
 
     if not entries:
         return
 
     # Separate old entries from current round entries
+    # Matches "Round N" in headers; planning entries ("Planning 1/3") have no
+    # round number and are always archived when implementation starts.
     round_pattern = re.compile(r'### \[.+?\] Round (\d+)')
     old_entries = []
     keep_entries = []
 
     for entry in entries:
         m = round_pattern.match(entry)
-        if m and int(m.group(1)) < keep_round:
-            old_entries.append(entry)
+        if m:
+            # Implementation round entry — keep if >= keep_round
+            if int(m.group(1)) < keep_round:
+                old_entries.append(entry)
+            else:
+                keep_entries.append(entry)
         else:
-            keep_entries.append(entry)
+            # Planning entry — archive once implementation starts
+            if keep_round > 0:
+                old_entries.append(entry)
+            else:
+                keep_entries.append(entry)
 
     if not old_entries:
         return  # nothing to archive
@@ -360,10 +370,10 @@ def _archive_message_board(keep_round: int):
     log(f"{DIM}  (archived {len(old_entries)} old messages, kept {len(keep_entries)} from current round){RESET}")
 
 
-def append_to_board(agent: str, round_num: int, text: str):
+def append_to_board(agent: str, label: str, text: str):
     board = WORKSPACE / "MESSAGE_BOARD.md"
     ts = datetime.now().strftime("%H:%M:%S")
-    entry = f"### [{agent}] Round {round_num} — {ts}\n\n{text}\n\n---\n\n"
+    entry = f"### [{agent}] {label} — {ts}\n\n{text}\n\n---\n\n"
     board.write_text(board.read_text() + entry)
 
 
@@ -554,7 +564,7 @@ def run_agent(agent: str, round_num: int, num_rounds: int, *,
 
     # Append to message board and commit with descriptive message
     if output:
-        append_to_board(agent, round_num, output)
+        append_to_board(agent, label, output)
     # Use first line of agent output as commit summary
     first_line = output.split("\n")[0][:72] if output else "no output"
     commit_msg = f"[{agent}] R{round_num}: {first_line}"

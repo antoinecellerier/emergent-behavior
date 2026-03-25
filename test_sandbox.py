@@ -230,6 +230,35 @@ class TestMessageBoardArchival:
 
         orchestrator.WORKSPACE = old_ws
 
+    def test_planning_entries_archived_on_implementation(self, tmp_path):
+        """Planning entries get archived when keep_round > 0."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent))
+        import orchestrator
+        old_ws = orchestrator.WORKSPACE
+        orchestrator.WORKSPACE = tmp_path
+
+        board = Path(tmp_path) / "MESSAGE_BOARD.md"
+        board.write_text(
+            "# Message Board\n\nTeam communication log.\n\n---\n\n"
+            "### [Architect] Planning 1/3 — 10:00:00\n\nProposal.\n\n---\n\n"
+            "### [Engine] Planning 1/3 — 10:05:00\n\nAgreed.\n\n---\n\n"
+            "### [Architect] Round 1 — 11:00:00\n\nWrote ARCHITECTURE.md.\n\n---\n\n"
+        )
+        orchestrator._archive_message_board(keep_round=1)
+
+        board_text = board.read_text()
+        archive_text = (tmp_path / "MESSAGE_BOARD_ARCHIVE.md").read_text()
+
+        # Planning entries should be archived
+        assert "Planning" not in board_text, "Planning should be archived"
+        assert "Planning" in archive_text
+        # Round 1 should stay
+        assert "Round 1" in board_text
+        assert "ARCHITECTURE.md" in board_text
+
+        orchestrator.WORKSPACE = old_ws
+
 
 if __name__ == "__main__":
     import pytest
