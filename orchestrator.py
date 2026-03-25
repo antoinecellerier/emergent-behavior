@@ -754,12 +754,27 @@ def check_for_retirements(active_agents: list[str]) -> list[str]:
 # Main
 # ---------------------------------------------------------------------------
 
+def _detect_last_round() -> int:
+    """Parse workspace git log to find the highest completed round number."""
+    import re
+    result = _git("log", "--oneline", "--all")
+    if not result.stdout.strip():
+        return 0
+    pattern = re.compile(r'\[.+?\] R(\d+):')
+    max_round = 0
+    for line in result.stdout.splitlines():
+        m = pattern.search(line)
+        if m:
+            max_round = max(max_round, int(m.group(1)))
+    return max_round
+
+
 def main():
     parser = argparse.ArgumentParser(description="Multi-agent emergent-behavior experiment")
-    parser.add_argument("--rounds", type=int, default=10, help="Number of rounds (default: 10)")
+    parser.add_argument("--rounds", type=int, default=3,
+                        help="Number of rounds to run (default: 3)")
     parser.add_argument("--resume", type=str, metavar="RUN_DIR",
                         help="Resume a previous run (pass the run directory name under runs/)")
-    parser.add_argument("--start-round", type=int, default=1, help="Round to start from (for resume)")
     parser.add_argument("--agents", nargs="+", choices=AGENTS, default=AGENTS,
                         help="Which agents to include")
     parser.add_argument("--no-facilitator", action="store_true",
@@ -792,6 +807,17 @@ def main():
     active_agents = list(args.agents)
     use_facilitator = not args.no_facilitator
 
+    setup(resume=resume)
+
+    # Determine round range
+    if resume:
+        last_round = _detect_last_round()
+        start_round = last_round + 1
+        end_round = last_round + args.rounds
+    else:
+        start_round = 1
+        end_round = args.rounds
+
     log(f"""{BOLD}
  ╔═══════════════════════════════════════════════════════════╗
  ║   Multi-Agent Emergent Behavior Experiment               ║
@@ -800,13 +826,11 @@ def main():
 
   Run         : {run_dir.name}
   Agents      : {', '.join(active_agents)}
-  Planning    : {args.planning_rounds} round{'s' if args.planning_rounds != 1 else ''}{' (skipped)' if args.planning_rounds == 0 else ''}
+  Planning    : {'skip (resuming)' if resume else f"{args.planning_rounds} rounds"}
   Facilitator : {'every ' + str(args.facilitator_every) + ' rounds' if use_facilitator else 'disabled'}
-  Rounds      : {args.rounds}
+  Rounds      : {start_round} to {end_round}{f' (resuming from {start_round})' if resume else ''}
   Workspace   : {WORKSPACE}
 """)
-
-    setup(resume=resume)
 
     # No TEAM_DIRECTIVES.md — the Facilitator only writes summaries.
     # Agents read MESSAGE_BOARD_SUMMARY.md for context on older rounds.
@@ -839,9 +863,9 @@ def main():
                     run_facilitator(0, args.rounds, active_agents, plan_round=plan_round)
 
         if not _shutdown_requested:
-            for round_num in range(args.start_round, args.rounds + 1):
+            for round_num in range(start_round, end_round + 1):
                 log(f"\n{BOLD}{'#' * 60}")
-                log(f"  ROUND {round_num} of {args.rounds}")
+                log(f"  ROUND {round_num} of {end_round}")
                 log(f"  Active agents: {', '.join(active_agents)}")
                 log(f"{'#' * 60}{RESET}")
 
@@ -875,7 +899,7 @@ def main():
   Logs      : {LOGS_DIR}
   Git log   : cd {WORKSPACE} && git log --oneline
   Run game  : cd {WORKSPACE} && python3 main.py
-  Resume    : python3 orchestrator.py --resume {run_dir.name} --start-round N --rounds M
+  Resume    : python3 orchestrator.py --resume {run_dir.name} --rounds N
 """)
 
 
