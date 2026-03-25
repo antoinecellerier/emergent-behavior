@@ -28,7 +28,7 @@ def _run_claude_stream(prompt: str, *, system: str = "", model: str = "haiku",
         "--output-format", "stream-json",
         "--verbose",
         "--no-session-persistence",
-        "--dangerously-skip-permissions",
+        "--permission-mode", "bypassPermissions",
     ]
     if system:
         cmd += ["--system-prompt", system]

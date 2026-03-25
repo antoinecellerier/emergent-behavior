@@ -57,7 +57,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
         "--no-session-persistence",
         "--settings", SETTINGS_FILE,
         # no --max-budget-usd — rely on prompt to limit scope
-        "--dangerously-skip-permissions",
+        "--permission-mode", "bypassPermissions",
         "--disallowedTools", "Bash,NotebookEdit,WebFetch,WebSearch",
     ]
 
