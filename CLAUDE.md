@@ -45,10 +45,11 @@ Each experiment creates a timestamped directory under `runs/`. NEVER delete run 
 Most behavior changes come from prompt edits, not new code. Prefer adjusting system prompts and shared context over adding orchestrator features. Keep the orchestrator simple.
 
 ### Claude CLI flags
-- `--disallowedTools` is the correct flag for tool restriction (works with `--permission-mode bypassPermissions`)
+- `--disallowedTools` is the correct flag for tool restriction (works with `--dangerously-skip-permissions`)
 - `--tools` and `--allowedTools` do NOT reliably restrict tools
-- Use `--permission-mode bypassPermissions` not `--dangerously-skip-permissions` (the latter bypasses the sandbox)
 - `--output-format stream-json` requires `--verbose`
+- Pipe prompts via stdin to `claude -p` (avoid long CLI arguments)
+- Use `readline()` loop, not `for line in proc.stdout` (avoids pipe buffering)
 - Pipe prompts via stdin to `claude -p` (avoid long CLI arguments)
 - Use `readline()` loop, not `for line in proc.stdout` (avoids pipe buffering)
 
