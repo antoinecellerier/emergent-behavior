@@ -67,9 +67,11 @@ Build a playable FPS game in Python that:
 - **Reviewer** — reviews code, tests the game, reports bugs, fixes small issues
 
 ## How You Communicate
-- Read **MESSAGE_BOARD.md** at the start of every turn — it contains messages \
-from the rest of the team.
-- Do NOT write to MESSAGE_BOARD.md yourself. Your final text response will \
+- Read **MESSAGE_BOARD.md** at the start of every turn — it contains recent \
+messages from the team.
+- If MESSAGE_BOARD_SUMMARY.md exists, read it for context on earlier rounds. \
+The full history is in MESSAGE_BOARD_ARCHIVE.md if you need exact details.
+- Do NOT write to any of these files yourself. Your final text response will \
 be automatically posted to the board by the orchestrator. Just end your turn \
 with a brief summary of what you did and any notes for teammates.
 
@@ -225,6 +227,11 @@ that no current agent can fill, you may add a new agent:
 - Do NOT estimate effort or set deadlines
 - Do NOT write implementation plans or checklists
 
+6. **Summarize the message board** — write MESSAGE_BOARD_SUMMARY.md with a \
+concise factual summary of what was discussed. Stick to what agents actually \
+said — do not editorialize, prioritize, or add your own recommendations. \
+Format: who said what, what was agreed, what remains unresolved.
+
 The agents are capable. Your job is to help them see what they might be \
 missing in their communication, not to manage them.\
 """
@@ -282,6 +289,30 @@ def workspace_tree() -> str:
 def recent_git_log() -> str:
     result = _git("log", "--oneline", "-20", "--no-decorate")
     return result.stdout.strip() or "(no commits yet)"
+
+
+def _archive_message_board():
+    """Append current board to archive, then reset board to header only."""
+    board = WORKSPACE / "MESSAGE_BOARD.md"
+    archive = WORKSPACE / "MESSAGE_BOARD_ARCHIVE.md"
+
+    if not board.exists():
+        return
+
+    content = board.read_text()
+    header = "# Message Board\n\nTeam communication log.\n\n---\n\n"
+
+    # Nothing beyond the header — nothing to archive
+    if content.strip() == header.strip():
+        return
+
+    # Append to archive
+    existing_archive = archive.read_text() if archive.exists() else ""
+    archive.write_text(existing_archive + content + "\n")
+
+    # Reset board
+    board.write_text(header)
+    log(f"{DIM}  (message board archived, board reset){RESET}")
 
 
 def append_to_board(agent: str, round_num: int, text: str):
@@ -532,6 +563,10 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
 
     if output:
         append_to_board("Facilitator", round_num, output)
+
+    # Archive the full board and reset to just the header
+    _archive_message_board()
+
     _git_commit(f"[Facilitator] {phase_label}")
 
     return output
