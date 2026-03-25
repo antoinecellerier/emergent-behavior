@@ -610,8 +610,8 @@ def run_facilitator(round_num: int, num_rounds: int, active_agents: list[str],
     stream_path = LOGS_DIR / f"{log_tag}_facilitator.jsonl"
     stream_path.write_text("\n".join(raw_events) + "\n")
 
-    if output:
-        append_to_board("Facilitator", round_num, output)
+    # Facilitator output goes to TEAM_DIRECTIVES.md and MESSAGE_BOARD_SUMMARY.md
+    # (written by the agent itself), NOT to the message board — that's for agents only.
 
     # Archive old messages, keep current round's messages at full fidelity
     _archive_message_board(keep_round=round_num)
