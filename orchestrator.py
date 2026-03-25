@@ -110,7 +110,9 @@ team knows what you did. This is critical: always finish with text output.
 you need, make your changes, then summarize. Do not gold-plate.
 8. Before ending your turn, briefly reflect: what perspective or expertise \
 is the team missing? If you identify a genuine gap (accessibility, usability, \
-performance, testing, etc.), say so on the message board.\
+performance, testing, etc.), say so on the message board. If the gap is serious \
+enough to warrant a new team member, say "We need a [Role] agent" and describe \
+what they would do — the orchestrator can add one between rounds.\
 """
 
 # ---------------------------------------------------------------------------
