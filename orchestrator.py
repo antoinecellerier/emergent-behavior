@@ -101,7 +101,7 @@ MAX_TOOL_CALLS_HINT = 15       # suggested limit — enforced via prompt, not ha
 AGENT_CONFIGS = {
     "Architect": {
         "model": "sonnet",
-        "effort": "high",
+        "effort": "medium",
         "disallowed_tools": ["Bash", "NotebookEdit", "WebFetch", "WebSearch"],
         "role_prompt": """\
 You are the **Architect**.
@@ -121,7 +121,7 @@ ARCHITECTURE.md (and updates to it), not .py files. Trust your team.\
 
     "Engine": {
         "model": "sonnet",
-        "effort": "high",
+        "effort": "medium",
         "disallowed_tools": ["NotebookEdit", "WebFetch", "WebSearch"],
         "role_prompt": """\
 You are the **Engine Developer**.
