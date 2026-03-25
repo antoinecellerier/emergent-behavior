@@ -766,8 +766,8 @@ def main():
                         help="Disable the Facilitator meta-agent")
     parser.add_argument("--planning-rounds", type=int, default=3,
                         help="Number of planning rounds before coding (default: 3, 0 to skip)")
-    parser.add_argument("--facilitator-every", type=int, default=2,
-                        help="Run Facilitator every N rounds (default: 2)")
+    parser.add_argument("--facilitator-every", type=int, default=1,
+                        help="Run Facilitator every N rounds (default: 1)")
     args = parser.parse_args()
 
     # Set up run directory
