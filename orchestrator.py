@@ -19,7 +19,10 @@ from pathlib import Path
 from datetime import datetime
 
 
-SETTINGS_FILE = Path(__file__).parent / "sandbox-settings.json"
+SANDBOX_SETTINGS_TEMPLATE = Path(__file__).parent / "sandbox-settings.json"
+PROJECT_DIR = str(Path(__file__).parent.resolve())
+HOME_DIR = str(Path.home())
+SETTINGS_FILE = None  # generated per-run with resolved paths
 
 
 def log(msg: str = ""):
@@ -235,10 +238,32 @@ didn't actually discuss or disagree about.
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _generate_settings():
+    """Generate sandbox settings with resolved absolute paths for permissions."""
+    global SETTINGS_FILE
+    base = json.loads(SANDBOX_SETTINGS_TEMPLATE.read_text())
+    # Permission paths: // prefix = absolute. HOME_DIR/PROJECT_DIR already start with /
+    base["permissions"] = {
+        "deny": [
+            f"Read(/{HOME_DIR}/**)",
+            f"Edit(/{HOME_DIR}/**)",
+            f"Write(/{HOME_DIR}/**)",
+        ],
+        "allow": [
+            f"Read(/{PROJECT_DIR}/**)",
+            f"Edit(/{PROJECT_DIR}/**)",
+            f"Write(/{PROJECT_DIR}/**)",
+        ],
+    }
+    SETTINGS_FILE = LOGS_DIR / "sandbox-settings.json"
+    SETTINGS_FILE.write_text(json.dumps(base, indent=2) + "\n")
+
+
 def setup(resume: bool):
     """Initialise workspace, git repo, and message board."""
     WORKSPACE.mkdir(exist_ok=True)
     LOGS_DIR.mkdir(exist_ok=True)
+    _generate_settings()
 
     if not (WORKSPACE / ".git").exists():
         _git("init")
