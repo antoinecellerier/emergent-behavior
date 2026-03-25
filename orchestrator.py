@@ -93,9 +93,11 @@ Read these in order — recent messages are your primary source of truth:
 2. **MESSAGE_BOARD_SUMMARY.md** — condensed summary of older rounds (background context)
 3. **MESSAGE_BOARD_ARCHIVE.md** — only if you need exact wording from a past discussion
 If the summary contradicts a recent message, trust the recent message.
-- Do NOT write to any of these files yourself. Your final text response will \
-be automatically posted to the board by the orchestrator. Just end your turn \
-with a brief summary of what you did and any notes for teammates.
+- Do NOT write to MESSAGE_BOARD*.md files yourself. Your final text response \
+will be automatically posted to the board by the orchestrator.
+- You MAY write to **TEAM_PRACTICES.md** to document working methods the team \
+has discovered (e.g., testing approaches, useful patterns, tools you built). \
+This file persists across rounds and helps the team build institutional memory.
 
 ## Ground Rules
 1. Always read existing files before modifying them.
@@ -113,7 +115,10 @@ you need, make your changes, then summarize. Do not gold-plate.
 is the team missing? If you identify a genuine gap (accessibility, usability, \
 performance, testing, etc.), say so on the message board. If the gap is serious \
 enough to warrant a new team member, say "We need a [Role] agent" and describe \
-what they would do — the orchestrator can add one between rounds.\
+what they would do — the orchestrator can add one between rounds.
+9. Don't flag the same gap twice. If you or a teammate raised a concern in a \
+previous round and nobody addressed it, either solve it yourself this turn \
+or propose a concrete next step — don't just repeat the observation.\
 """
 
 # ---------------------------------------------------------------------------
@@ -164,7 +169,10 @@ Priorities:
 - Handle input without blocking.
 - Optimise rendering so the game feels responsive.
 
-Write performant Python. Choose the best tools and libraries available.\
+Write performant Python. Choose the best tools and libraries available.
+
+If no teammate raised issues with your code and you have nothing to add, \
+keep your turn short and move on. Don't re-read or re-edit stable code.\
 """,
     },
 
@@ -182,7 +190,10 @@ Priorities:
 - Wire up the game loop: input → update → render cycle.
 - Add weapons, health, scoring, and win/lose conditions.
 
-Build on top of the engine — use the interfaces provided by the Engine dev.\
+Build on top of the engine — use the interfaces provided by the Engine dev.
+
+If no teammate raised issues with your code and you have nothing to add, \
+keep your turn short and move on. Don't re-read or re-edit stable code.\
 """,
     },
 
@@ -195,7 +206,7 @@ You are the **Reviewer / QA**.
 
 Priorities:
 - Read through the codebase and check for bugs or integration issues.
-- Try to run the game (python3 main.py or similar) and report results.
+- Try to run the game and verify it works.
 - Fix small bugs you find — but always note them on the message board.
 - Suggest concrete, actionable improvements with code snippets.
 - Ensure the code stays consistent and well-organised.
@@ -427,10 +438,17 @@ def build_prompt(agent: str, round_num: int, num_rounds: int, *,
     changes = _changes_since(agent)
 
     if planning:
-        if plan_round < plan_total:
+        if plan_round == 1:
             phase = (
                 f"This is planning round {plan_round} of {plan_total}. "
                 "Propose ideas, react to teammates' proposals, flag disagreements."
+            )
+        elif plan_round < plan_total:
+            phase = (
+                f"This is planning round {plan_round} of {plan_total}. "
+                "Challenge the current plan: what's the weakest technical decision "
+                "so far? What would you do differently? Push back on anything you "
+                "accepted too easily in round 1."
             )
         else:
             phase = (
