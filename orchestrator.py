@@ -69,9 +69,9 @@ Build a playable FPS game in Python that:
 ## How You Communicate
 - Read **MESSAGE_BOARD.md** at the start of every turn — it contains messages \
 from the rest of the team.
-- After your turn your spoken output will be appended to the message board \
-automatically, so end with a concise summary of what you did and any open \
-questions or requests for teammates.
+- Do NOT write to MESSAGE_BOARD.md yourself. Your final text response will \
+be automatically posted to the board by the orchestrator. Just end your turn \
+with a brief summary of what you did and any notes for teammates.
 
 ## Ground Rules
 1. Always read existing files before modifying them.
@@ -79,7 +79,9 @@ questions or requests for teammates.
 compelling reason explained on the message board.
 3. Keep changes focused on your role.
 4. If you are blocked or need input from someone, say so clearly.
-5. Write clean, working Python. Prefer the standard library where possible.\
+5. Write clean, working Python. Prefer the standard library where possible.
+6. You MUST end your turn by producing a text summary — this is how your \
+team knows what you did.\
 """
 
 # ---------------------------------------------------------------------------
