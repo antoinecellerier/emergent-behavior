@@ -563,11 +563,15 @@ def check_for_new_agents(run_dir: Path, workspace: Path, agent_configs: dict,
             name = entry["name"]
             role_prompt = entry["role_prompt"]
             if name not in agent_configs:
+                requested_by = entry.get("requested_by", "")
+                full_prompt = role_prompt[:2000]
+                if requested_by:
+                    full_prompt += f"\n\nYou were recruited because: {requested_by}"
                 agent_configs[name] = {
                     "model": "sonnet",
                     "effort": "medium",
                     "disallowed_tools": [],
-                    "role_prompt": role_prompt[:2000],
+                    "role_prompt": full_prompt,
                 }
                 COLORS.setdefault(name, _next_color())
                 active_agents.insert(0, name)
