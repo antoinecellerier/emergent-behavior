@@ -10,11 +10,16 @@ Usage:
 """
 
 import sys
+import os
 import json
 import signal
 import argparse
 from pathlib import Path
 from datetime import datetime
+
+# Prevent "Exception ignored on flushing sys.stdout: BrokenPipeError"
+# when piped through tee and tee dies on Ctrl-C
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 from prompts import load_agent_configs, list_configs
 from agents import (
