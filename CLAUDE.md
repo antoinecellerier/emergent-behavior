@@ -58,6 +58,7 @@ When making significant changes (new features, architectural changes, security u
 - Use `select()` + `readline()`, not `for line in proc.stdout` (avoids pipe buffering and deadlocks)
 
 ### Commit discipline
+- **Always commit after completing a functional change** — don't leave work uncommitted
 - Experiment workspace commits use agent summary as message: `[Agent] RN: first line of summary`
 - Orchestrator commits to parent repo are separate
 - Never commit on behalf of the user without being asked

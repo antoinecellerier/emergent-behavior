@@ -17,6 +17,11 @@ class RateLimitError(Exception):
     pass
 
 
+class APIError(Exception):
+    """Raised when Claude returns a server error (500, 529, etc.)."""
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Terminal colors
 # ---------------------------------------------------------------------------
@@ -135,7 +140,8 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
     is_first_turn = "first turn" in diff
 
     if planning:
-        phase = f"This is planning round {plan_round} of {plan_total}."
+        phase = (f"This is planning round {plan_round} of {plan_total}. "
+                 f"After planning, the team will have {num_rounds} implementation rounds.")
         if is_first_turn:
             phase += (" You just joined the team. Read the discussion so far "
                       "with fresh eyes.")
@@ -152,8 +158,13 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
             "relevant source files, then make your contribution."
         )
 
+    if planning:
+        status_line = f"## Status — Planning round {plan_round} of {plan_total} ({num_rounds} implementation rounds to follow)"
+    else:
+        status_line = f"## Status — Round {round_num} of {num_rounds}"
+
     return (
-        f"## Status — Round {round_num} of {num_rounds}\n\n"
+        f"{status_line}\n\n"
         f"Your working directory is already set to the project workspace. "
         f"Use relative paths (e.g. `MESSAGE_BOARD.md`, not `/root/MESSAGE_BOARD.md`).\n\n"
         f"### Workspace files\n{tree}\n\n"
@@ -253,6 +264,7 @@ def run_claude(workspace: Path, settings_file: Path,
     text_chunks: list[str] = []
     raw_events: list[str] = []
     _hit_rate_limit = False
+    _hit_api_error = False
     env = {
         **os.environ,
         "SANDBOX_ALLOWED_DIR": str(workspace),
@@ -315,6 +327,9 @@ def run_claude(workspace: Path, settings_file: Path,
                 subtype = event.get("subtype", "")
                 if event.get("is_error") and "hit your limit" in result_text.lower():
                     _hit_rate_limit = True
+                elif event.get("is_error") and any(s in result_text.lower() for s in
+                        ("api_error", "internal server error", "overloaded", "api error")):
+                    _hit_api_error = True
                 elif subtype and subtype != "success":
                     log(f"{DIM}    (stop: {subtype}){RESET}")
 
@@ -327,11 +342,17 @@ def run_claude(workspace: Path, settings_file: Path,
         if proc.returncode != 0 and not result_text:
             stderr = proc.stderr.read().strip()
             result_text = f"(agent exited with code {proc.returncode})\n{stderr}"
+            if any(s in stderr.lower() for s in
+                   ("api_error", "internal server error", "overloaded", "api error: 5")):
+                _hit_api_error = True
 
         # Detect rate limiting via is_error flag on result event
         if _hit_rate_limit:
             log(f"\n{BOLD}Rate limit reached: {result_text.strip()}{RESET}")
             raise RateLimitError(result_text.strip())
+
+        if _hit_api_error:
+            raise APIError(result_text.strip())
 
     except subprocess.TimeoutExpired:
         proc.kill()
@@ -364,7 +385,8 @@ def run_claude(workspace: Path, settings_file: Path,
 
 def run_agent(workspace: Path, logs_dir: Path, settings_file: Path,
               agent: str, agent_configs: dict, round_num: int, num_rounds: int, *,
-              planning: bool = False, plan_round: int = 0, plan_total: int = 0) -> str:
+              planning: bool = False, plan_round: int = 0, plan_total: int = 0,
+              objective: dict | None = None) -> str:
     """Run a single agent turn. Returns the agent's text output."""
     cfg              = agent_configs.get(agent, {})
     model            = cfg.get("model", "sonnet")
@@ -373,7 +395,7 @@ def run_agent(workspace: Path, logs_dir: Path, settings_file: Path,
     if planning:
         disallowed_tools = list(set(disallowed_tools) | {"Bash", "Write", "Edit"})
 
-    system = build_shared_context(agent_configs) + "\n\n" + cfg.get("role_prompt", "")
+    system = build_shared_context(agent_configs, objective) + "\n\n" + cfg.get("role_prompt", "")
     prompt = build_prompt(workspace, agent, round_num, num_rounds,
                           planning=planning, plan_round=plan_round, plan_total=plan_total)
     color  = COLORS.get(agent, "")
@@ -384,8 +406,22 @@ def run_agent(workspace: Path, logs_dir: Path, settings_file: Path,
     log(f"  blocked tools: {blocked}")
     log(f"{'=' * 60}{RESET}")
 
-    output, elapsed, raw_events = run_claude(
-        workspace, settings_file, prompt, system, model, effort, disallowed_tools, color)
+    max_retries = 3
+    retry_delays = [30, 60, 120]
+    for attempt in range(max_retries + 1):
+        try:
+            output, elapsed, raw_events = run_claude(
+                workspace, settings_file, prompt, system, model, effort, disallowed_tools, color)
+            break
+        except APIError as e:
+            if attempt < max_retries:
+                delay = retry_delays[attempt]
+                log(f"{color}  API error, retrying in {delay}s "
+                    f"(attempt {attempt + 1}/{max_retries})...{RESET}")
+                log(f"{DIM}  {e}{RESET}")
+                time.sleep(delay)
+            else:
+                raise
 
     if output:
         log(f"{DIM}{output}{RESET}")
@@ -449,9 +485,23 @@ def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
     )
 
     blocked = ["Bash", "Agent", "NotebookEdit", "WebFetch", "WebSearch"]
-    output, elapsed, raw_events = run_claude(
-        workspace, settings_file, prompt, FACILITATOR_SYSTEM, "sonnet", "medium",
-        blocked, color, timeout=300)
+    max_retries = 3
+    retry_delays = [30, 60, 120]
+    for attempt in range(max_retries + 1):
+        try:
+            output, elapsed, raw_events = run_claude(
+                workspace, settings_file, prompt, FACILITATOR_SYSTEM, "sonnet", "medium",
+                blocked, color, timeout=300)
+            break
+        except APIError as e:
+            if attempt < max_retries:
+                delay = retry_delays[attempt]
+                log(f"{color}  API error, retrying in {delay}s "
+                    f"(attempt {attempt + 1}/{max_retries})...{RESET}")
+                log(f"{DIM}  {e}{RESET}")
+                time.sleep(delay)
+            else:
+                raise
 
     if output:
         log(f"{DIM}{output}{RESET}")
