@@ -109,7 +109,7 @@ def changes_since(workspace: Path, agent: str) -> str:
     if not diff.stdout.strip():
         return "(no file changes since your last turn)"
 
-    diff_detail = git(workspace, "diff", last_hash, "HEAD", "--", "*.py", "*.md")
+    diff_detail = git(workspace, "diff", last_hash, "HEAD")
     detail = diff_detail.stdout.strip()
     if len(detail) > 3000:
         detail = detail[:3000] + "\n... (diff truncated)"
