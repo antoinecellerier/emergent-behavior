@@ -99,7 +99,7 @@ def workspace_tree(workspace: Path) -> str:
 
 
 def recent_git_log(workspace: Path) -> str:
-    result = git(workspace, "log", "--oneline", "-20", "--no-decorate")
+    result = git(workspace, "log", "--oneline", "-50", "--no-decorate")
     return result.stdout.strip() or "(no commits yet)"
 
 
@@ -117,8 +117,8 @@ def changes_since(workspace: Path, agent: str) -> str:
 
     diff_detail = git(workspace, "diff", last_hash, "HEAD")
     detail = diff_detail.stdout.strip()
-    if len(detail) > 3000:
-        detail = detail[:3000] + "\n... (diff truncated)"
+    if len(detail) > 8000:
+        detail = detail[:8000] + "\n... (diff truncated)"
 
     return f"{diff.stdout.strip()}\n\n{detail}" if detail else diff.stdout.strip()
 
