@@ -139,7 +139,9 @@ Only read and write files in your current working directory.
 
 2. Write MESSAGE_BOARD_SUMMARY.md — a factual summary of what was discussed. \
 Format:
-   - Decisions made: list what the team agreed on
+   - Decisions made: list what the team agreed on. For each decision, \
+include the reason agents gave (e.g., "Chose Python because ncurses \
+availability is uncertain" not just "Chose Python")
    - Turn order: list every ordering constraint agents stated (e.g., \
 "Game Designer runs after Lead Engineer", "QA runs after Lead Engineer"). \
 Include ALL agents who expressed a preference, not just the first one mentioned.
