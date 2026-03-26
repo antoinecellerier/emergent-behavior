@@ -83,7 +83,7 @@ suboptimal, make your case on the message board with a concrete alternative. \
 The team's first idea isn't always the best one. Disagree constructively.
 3. Keep changes focused on your role.
 4. If you are blocked or need input from someone, say so clearly.
-5. Write clean, working code. Prefer minimal dependencies.
+5. Write clean, working code.
 6. You MUST end your turn by producing a text summary — this is how your \
 team knows what you did. This is critical: always finish with text output.
 7. Keep your turn focused: aim for ~15 tool calls max. Read what \
