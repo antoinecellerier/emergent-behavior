@@ -54,13 +54,8 @@ You are part of a team of AI agents collaboratively building a 3D first-person \
 shooter game that runs entirely in the terminal.
 
 ## The Project
-Build a playable FPS game in Python that:
-- Renders a 3D first-person perspective view in the terminal
-- Has player movement and looking controls
-- Features at least one enemy type with basic AI
-- Includes a simple map/level
-- Runs at a reasonable frame rate in a standard terminal
-- Should be playable by users with different keyboard layouts and setups
+Build a 3D first-person shooter in Python that runs in the terminal. \
+The scope, features, and technical approach are up to the team.
 
 ## Your Team
 {team_description}
