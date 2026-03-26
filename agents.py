@@ -16,15 +16,37 @@ from prompts import ALWAYS_BLOCKED, FACILITATOR_SYSTEM, build_shared_context
 # ---------------------------------------------------------------------------
 
 COLORS = {
-    "Architect":   "\033[1;34m",
-    "Engine":      "\033[1;32m",
-    "Gameplay":    "\033[1;33m",
-    "Reviewer":    "\033[1;31m",
-    "Facilitator": "\033[1;35m",
+    "Architect":   "\033[1;34m",   # blue
+    "Engine":      "\033[1;32m",   # green
+    "Gameplay":    "\033[1;33m",   # yellow
+    "Reviewer":    "\033[1;31m",   # red
+    "Facilitator": "\033[1;35m",   # magenta
 }
 RESET = "\033[0m"
 DIM   = "\033[2m"
 BOLD  = "\033[1m"
+
+# Colors for dynamically recruited agents — cycle through these
+_DYNAMIC_COLORS = [
+    "\033[1;36m",   # cyan
+    "\033[1;96m",   # bright cyan
+    "\033[1;92m",   # bright green
+    "\033[1;93m",   # bright yellow
+    "\033[1;94m",   # bright blue
+    "\033[1;95m",   # bright magenta
+    "\033[1;91m",   # bright red
+    "\033[38;5;208m",  # orange
+    "\033[38;5;141m",  # purple
+    "\033[38;5;117m",  # sky blue
+]
+_dynamic_color_idx = 0
+
+
+def _next_color() -> str:
+    global _dynamic_color_idx
+    color = _DYNAMIC_COLORS[_dynamic_color_idx % len(_DYNAMIC_COLORS)]
+    _dynamic_color_idx += 1
+    return color
 
 
 def log(msg: str = ""):
@@ -389,7 +411,7 @@ def check_for_new_agents(workspace: Path, agent_configs: dict,
                     "disallowed_tools": [],
                     "role_prompt": role_prompt[:2000],
                 }
-                COLORS.setdefault(name, "\033[1;36m")
+                COLORS.setdefault(name, _next_color())
                 active_agents.append(name)
                 recruited.append(name)
                 log(f"\n{BOLD}  + New agent recruited: {name}{RESET}")
