@@ -2,7 +2,8 @@
 """
 Multi-Agent Emergent Behavior Experiment
 ========================================
-Agents collaboratively build a 3D first-person shooter in the terminal.
+Spawns multiple Claude Code agents to collaboratively build a project.
+The objective is defined in the agent config JSON (agents/*.json).
 
 Usage:
     python3 orchestrator.py --rounds 3              # fresh: planning + 3 rounds
@@ -21,13 +22,13 @@ from datetime import datetime
 # when piped through tee and tee dies on Ctrl-C
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
-from prompts import load_agent_configs, list_configs
+from prompts import load_agent_configs, load_objective, list_configs
 from agents import (
     log, git, git_commit, run_agent, run_facilitator,
     collect_facilitator_files,
     check_for_new_agents, check_for_retirements, check_for_reorder,
     detect_resume_state, save_roster, load_roster,
-    RateLimitError, BOLD, RESET, DIM,
+    RateLimitError, APIError, BOLD, RESET, DIM,
 )
 from board import init_board
 
@@ -155,6 +156,7 @@ def main():
         sys.exit(0)
 
     agent_configs = load_agent_configs(args.config)
+    objective = load_objective(args.config)
 
     # --- Run directory ---
     RUNS_DIR.mkdir(exist_ok=True)
@@ -203,7 +205,7 @@ def main():
     log(f"""{BOLD}
  ╔═══════════════════════════════════════════════════════════╗
  ║   Multi-Agent Emergent Behavior Experiment               ║
- ║   Project: 3D Terminal FPS                               ║
+ ║   Project: {objective['summary']:45s} ║
  ╚═══════════════════════════════════════════════════════════╝{RESET}
 
   Run         : {run_dir.name}
@@ -227,7 +229,8 @@ def main():
                     run_agent(workspace, logs_dir, settings_file,
                               agent, agent_configs, 0, end_round,
                               planning=True, plan_round=plan_round,
-                              plan_total=args.planning_rounds)
+                              plan_total=args.planning_rounds,
+                              objective=objective)
                     if _shutdown_requested:
                         break
 
@@ -263,7 +266,8 @@ def main():
 
                 for agent in agents_this_round:
                     run_agent(workspace, logs_dir, settings_file,
-                              agent, agent_configs, round_num, end_round)
+                              agent, agent_configs, round_num, end_round,
+                              objective=objective)
                     if _shutdown_requested:
                         break
 
@@ -289,18 +293,23 @@ def main():
     except RateLimitError as e:
         log(f"\n{BOLD}Experiment paused — rate limit hit.{RESET}")
         log(f"{DIM}Resume: python3 orchestrator.py --resume {run_dir.name} --rounds {args.rounds}{RESET}")
+    except APIError as e:
+        log(f"\n{BOLD}Experiment aborted — Claude API error (retries exhausted).{RESET}")
+        log(f"{DIM}{e}{RESET}")
+        log(f"{DIM}Check https://status.anthropic.com/ then resume:")
+        log(f"  python3 orchestrator.py --resume {run_dir.name} --rounds {args.rounds}{RESET}")
     except Exception as e:
         import traceback
         log(f"\n{BOLD}Experiment error: {e}{RESET}")
         traceback.print_exc()
 
+    run_hint = f"\n  Run       : cd {workspace} && {objective['run_command']}" if objective.get("run_command") else ""
     log(f"""
 {BOLD}Experiment complete.{RESET}
   Run       : {run_dir.name}
   Workspace : {workspace}
   Logs      : {logs_dir}
-  Git log   : cd {workspace} && git log --oneline
-  Run game  : cd {workspace} && python3 main.py
+  Git log   : cd {workspace} && git log --oneline{run_hint}
   Resume    : python3 orchestrator.py --resume {run_dir.name} --rounds N
 """)
 

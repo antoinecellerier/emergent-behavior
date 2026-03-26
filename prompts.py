@@ -15,11 +15,8 @@ AGENTS_DIR = Path(__file__).parent / "agents"
 ALWAYS_BLOCKED = ["NotebookEdit", "WebFetch", "WebSearch"]
 
 
-def load_agent_configs(config_name: str = "default") -> dict:
-    """Load agent configs from agents/<config_name>.json.
-
-    Returns dict of {name: {model, effort, disallowed_tools, role_prompt}}.
-    """
+def _load_config_data(config_name: str = "default") -> dict:
+    """Load raw config data from agents/<config_name>.json."""
     config_path = AGENTS_DIR / f"{config_name}.json"
     if not config_path.exists():
         available = [f.stem for f in AGENTS_DIR.glob("*.json")]
@@ -27,7 +24,15 @@ def load_agent_configs(config_name: str = "default") -> dict:
             f"Agent config '{config_name}' not found. "
             f"Available: {', '.join(sorted(available))}"
         )
-    data = json.loads(config_path.read_text())
+    return json.loads(config_path.read_text())
+
+
+def load_agent_configs(config_name: str = "default") -> dict:
+    """Load agent configs from agents/<config_name>.json.
+
+    Returns dict of {name: {model, effort, disallowed_tools, role_prompt}}.
+    """
+    data = _load_config_data(config_name)
     configs = data.get("agents", {})
     # Ensure all required fields have defaults
     for name, cfg in configs.items():
@@ -35,6 +40,25 @@ def load_agent_configs(config_name: str = "default") -> dict:
         cfg.setdefault("effort", "medium")
         cfg.setdefault("disallowed_tools", [])
     return configs
+
+
+DEFAULT_OBJECTIVE = {
+    "summary": "3D Terminal FPS",
+    "description": (
+        "Build a 3D first-person shooter that runs in the terminal. "
+        "The scope, features, language, and technical approach are up to the team."
+    ),
+}
+
+
+def load_objective(config_name: str = "default") -> dict:
+    """Load the objective from agents/<config_name>.json.
+
+    Returns dict with keys: summary, description, and optionally run_command.
+    Falls back to DEFAULT_OBJECTIVE if the config has no objective field.
+    """
+    data = _load_config_data(config_name)
+    return data.get("objective", DEFAULT_OBJECTIVE)
 
 
 def list_configs() -> list[tuple[str, str]]:
@@ -51,12 +75,10 @@ def list_configs() -> list[tuple[str, str]]:
 
 
 SHARED_CONTEXT = """\
-You are part of a team of AI agents collaboratively building a 3D first-person \
-shooter game that runs entirely in the terminal.
+You are part of a team of AI agents collaboratively building a project.
 
 ## The Project
-Build a 3D first-person shooter that runs in the terminal. \
-The scope, features, language, and technical approach are up to the team.
+{objective_description}
 
 ## Your Team
 {team_description}
@@ -97,8 +119,10 @@ Don't fill your turn with busywork.\
 """
 
 
-def build_shared_context(agent_configs: dict) -> str:
-    """Build the shared context with the current team roster."""
+def build_shared_context(agent_configs: dict, objective: dict | None = None) -> str:
+    """Build the shared context with the current team roster and objective."""
+    if objective is None:
+        objective = DEFAULT_OBJECTIVE
     team_lines = []
     for name, cfg in agent_configs.items():
         # Extract first sentence of role_prompt as description
@@ -108,7 +132,10 @@ def build_shared_context(agent_configs: dict) -> str:
         first_line = first_line.replace("You are the ", "").rstrip(".")
         team_lines.append(f"- **{name}** — {first_line}")
     team_description = "\n".join(team_lines)
-    return SHARED_CONTEXT.format(team_description=team_description)
+    return SHARED_CONTEXT.format(
+        objective_description=objective["description"],
+        team_description=team_description,
+    )
 
 
 FACILITATOR_SYSTEM = """\

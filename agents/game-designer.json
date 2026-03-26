@@ -1,5 +1,10 @@
 {
   "description": "Solo game designer — must hire its own team",
+  "objective": {
+    "summary": "3D Terminal FPS",
+    "description": "Build a 3D first-person shooter that runs in the terminal. The scope, features, language, and technical approach are up to the team.",
+    "run_command": "python3 main.py"
+  },
   "agents": {
     "GameDesigner": {
       "model": "sonnet",
