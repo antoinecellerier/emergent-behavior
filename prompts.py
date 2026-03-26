@@ -6,6 +6,7 @@ This file contains the shared context, facilitator prompt, and loader.
 """
 
 import json
+import re
 from pathlib import Path
 
 AGENTS_DIR = Path(__file__).parent / "agents"
@@ -117,7 +118,6 @@ def build_shared_context(agent_configs: dict) -> str:
         # Extract first sentence of role_prompt as description
         first_line = cfg["role_prompt"].split("\n")[0].strip()
         # Clean up leading markdown bold marker and "You are the" prefix
-        import re
         first_line = re.sub(r'^\*\*(.+?)\*\*', r'\1', first_line)
         first_line = first_line.replace("You are the ", "").rstrip(".")
         team_lines.append(f"- **{name}** — {first_line}")

@@ -465,8 +465,9 @@ def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
         f"### Workspace files\n{tree}\n\n"
         f"### Recent git history\n{gitlog}\n\n---\n\n"
         f"Read MESSAGE_BOARD.md. Write MESSAGE_BOARD_SUMMARY.md. "
-        f"If any agent requested a new specialist or said their role is done, "
-        f"handle it via NEW_AGENT.json or RETIRE_AGENT.json."
+        f"If any agent requested a new specialist, said their role is done, "
+        f"or stated a turn-order preference, handle it via the appropriate "
+        f"JSON file (NEW_AGENT.json, RETIRE_AGENT.json, REORDER_AGENTS.json)."
     )
 
     blocked = ["Bash", "Agent", "NotebookEdit", "WebFetch", "WebSearch"]
