@@ -466,6 +466,35 @@ def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
 
 
 # ---------------------------------------------------------------------------
+# Agent roster persistence
+# ---------------------------------------------------------------------------
+
+ROSTER_FILE = "AGENT_ROSTER.json"
+
+
+def save_roster(run_dir: Path, agent_configs: dict, active_agents: list[str]):
+    """Persist current agent roster to run root for resume."""
+    roster = {
+        "active_agents": active_agents,
+        "configs": {name: agent_configs[name] for name in active_agents
+                    if name in agent_configs},
+    }
+    (run_dir / ROSTER_FILE).write_text(json.dumps(roster, indent=2) + "\n")
+
+
+def load_roster(run_dir: Path) -> tuple[dict, list[str]] | None:
+    """Load persisted agent roster. Returns (configs, active_agents) or None."""
+    roster_path = run_dir / ROSTER_FILE
+    if not roster_path.exists():
+        return None
+    try:
+        data = json.loads(roster_path.read_text())
+        return data["configs"], data["active_agents"]
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Dynamic agent management
 # ---------------------------------------------------------------------------
 
