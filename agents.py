@@ -184,18 +184,35 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
 # Tool display helpers
 # ---------------------------------------------------------------------------
 
+def _short_path(path: str) -> str:
+    """Strip workspace prefix from a path for display."""
+    parts = path.replace("\\", "/").split("/workspace/")
+    return parts[-1] if len(parts) > 1 else Path(path).name
+
+
 def _tool_hint(tool_name: str, tool_input: dict) -> str:
     """Extract a short human-readable hint from a tool invocation."""
     if tool_name in ("Read", "Write", "Edit"):
         path = tool_input.get("file_path", "")
-        # Show just the filename, not the full absolute path
-        return Path(path).name if path else ""
+        return _short_path(path) if path else ""
     if tool_name == "Bash":
+        # Prefer the description field if present
+        desc = tool_input.get("description", "")
+        if desc:
+            return desc[:100]
+        # Fall back to first meaningful line of command
         cmd = tool_input.get("command", "")
-        return cmd[:80] if cmd else ""
+        # For multi-line python/scripts, show "python3 <filename>" or "python3 -c ..."
+        first_line = cmd.split("\n")[0].strip()
+        if first_line.startswith("python3 -c"):
+            return "python3 -c ..."
+        # Replace long workspace paths
+        parts = first_line.split("/workspace/")
+        first_line = parts[-1] if len(parts) > 1 else first_line
+        return first_line[:100] if first_line else ""
     if tool_name == "Grep":
         pattern = tool_input.get("pattern", "")
-        path = Path(tool_input.get("path", "")).name if tool_input.get("path") else ""
+        path = _short_path(tool_input.get("path", "")) if tool_input.get("path") else ""
         return f"/{pattern}/ {path}".strip()
     if tool_name == "Glob":
         return tool_input.get("pattern", "")
