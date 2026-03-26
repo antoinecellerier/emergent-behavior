@@ -170,6 +170,8 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
 
     return (
         f"## Status — Round {round_num} of {num_rounds}\n\n"
+        f"Your working directory is already set to the project workspace. "
+        f"Use relative paths (e.g. `MESSAGE_BOARD.md`, not `/root/MESSAGE_BOARD.md`).\n\n"
         f"### Workspace files\n{tree}\n\n"
         f"### Recent git history\n{gitlog}\n\n"
         f"### Changes since your last turn\n{diff}\n\n---\n\n"
