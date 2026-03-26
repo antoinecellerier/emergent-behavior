@@ -121,8 +121,10 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
     gitlog  = recent_git_log(workspace)
     diff    = changes_since(workspace, agent)
 
+    is_first_turn = "first turn" in diff
+
     if planning:
-        if plan_round == 1:
+        if plan_round == 1 or is_first_turn:
             phase = (
                 f"This is planning round {plan_round} of {plan_total}. "
                 "Propose ideas, react to teammates' proposals, flag disagreements."
