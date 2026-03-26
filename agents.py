@@ -169,6 +169,30 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
 
 
 # ---------------------------------------------------------------------------
+# Tool display helpers
+# ---------------------------------------------------------------------------
+
+def _tool_hint(tool_name: str, tool_input: dict) -> str:
+    """Extract a short human-readable hint from a tool invocation."""
+    if tool_name in ("Read", "Write", "Edit"):
+        path = tool_input.get("file_path", "")
+        # Show just the filename, not the full absolute path
+        return Path(path).name if path else ""
+    if tool_name == "Bash":
+        cmd = tool_input.get("command", "")
+        return cmd[:80] if cmd else ""
+    if tool_name == "Grep":
+        pattern = tool_input.get("pattern", "")
+        path = Path(tool_input.get("path", "")).name if tool_input.get("path") else ""
+        return f"/{pattern}/ {path}".strip()
+    if tool_name == "Glob":
+        return tool_input.get("pattern", "")
+    if tool_name == "Agent":
+        return tool_input.get("description", "")[:60]
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Claude subprocess
 # ---------------------------------------------------------------------------
 
@@ -234,7 +258,9 @@ def run_claude(workspace: Path, settings_file: Path,
                 for block in event["message"].get("content", []):
                     btype = block.get("type", "")
                     if btype == "tool_use":
-                        log(f"{color}    [{block.get('name', '?')}]{RESET}")
+                        tool_name = block.get("name", "?")
+                        tool_hint = _tool_hint(tool_name, block.get("input", {}))
+                        log(f"{color}    [{tool_name}]{RESET} {DIM}{tool_hint}{RESET}")
                     elif btype == "text":
                         text_chunks.append(block.get("text", ""))
 
