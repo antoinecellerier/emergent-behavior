@@ -178,8 +178,8 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
         f"### Changes since your last turn\n{diff}\n\n---\n\n"
         f"{action}\n\n"
         f"Focus on what changed — don't re-read files that haven't been modified.\n\n"
-        f"When finished, write a short summary of what you did and any notes "
-        f"for teammates."
+        f"When finished, write a summary for teammates. Start with a single "
+        f"headline sentence (this becomes the git commit message), then details."
     )
 
 
