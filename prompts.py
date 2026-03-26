@@ -88,8 +88,10 @@ you need, make your changes, then summarize. Do not gold-plate.
 is the team missing? If you identify a genuine gap, you have three options — \
 pick one, don't just observe:
    a. Solve it yourself this turn.
-   b. Say exactly **"We need a [Role] agent to [do what]"** on the message \
-board — the orchestrator will add one next round.
+   b. Say **"We need a [Role] agent"** on the message board, followed by \
+a detailed description of the role: what they should do, what their \
+priorities are, and how they fit in the team. Your description becomes \
+their instructions, so be thorough. The orchestrator will add them next round.
    c. Propose a concrete next step for an existing teammate.
 Never flag a gap without taking one of these actions. Repeating an \
 observation from a previous round without acting on it is not useful.\
