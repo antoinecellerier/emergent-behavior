@@ -192,9 +192,22 @@ def _short_path(path: str) -> str:
 
 def _tool_hint(tool_name: str, tool_input: dict) -> str:
     """Extract a short human-readable hint from a tool invocation."""
-    if tool_name in ("Read", "Write", "Edit"):
-        path = tool_input.get("file_path", "")
-        return _short_path(path) if path else ""
+    if tool_name == "Read":
+        path = _short_path(tool_input.get("file_path", ""))
+        offset = tool_input.get("offset")
+        limit = tool_input.get("limit")
+        if offset or limit:
+            rng = f" [{offset or 0}:{(offset or 0) + limit}]" if limit else f" [from {offset}]"
+            return path + rng
+        return path
+    if tool_name in ("Write",):
+        return _short_path(tool_input.get("file_path", ""))
+    if tool_name == "Edit":
+        path = _short_path(tool_input.get("file_path", ""))
+        old = tool_input.get("old_string", "")
+        # Show first line of what's being replaced
+        snippet = old.split("\n")[0].strip()[:50]
+        return f"{path} ({snippet}...)" if snippet else path
     if tool_name == "Bash":
         # Prefer the description field if present
         desc = tool_input.get("description", "")
@@ -217,7 +230,9 @@ def _tool_hint(tool_name: str, tool_input: dict) -> str:
     if tool_name == "Glob":
         return tool_input.get("pattern", "")
     if tool_name == "Agent":
-        return tool_input.get("description", "")[:60]
+        desc = tool_input.get("description", "")[:60]
+        stype = tool_input.get("subagent_type", "")
+        return f"({stype}) {desc}" if stype else desc
     return ""
 
 
