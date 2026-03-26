@@ -81,10 +81,15 @@ def git_commit(workspace: Path, message: str) -> bool:
     return False
 
 
+_TREE_SKIP = {".git", "__pycache__", "node_modules", ".claude"}
+
+
 def workspace_tree(workspace: Path) -> str:
     files = []
     for f in sorted(workspace.rglob("*")):
-        if ".git" in f.parts:
+        if _TREE_SKIP & set(f.parts):
+            continue
+        if f.suffix in (".pyc", ".o", ".so", ".dylib"):
             continue
         if f.is_file():
             rel = f.relative_to(workspace)
