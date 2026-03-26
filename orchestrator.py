@@ -241,9 +241,11 @@ def main():
                                     0, end_round, active_agents,
                                     plan_round=plan_round)
                     collect_facilitator_files(workspace, run_dir)
+                    # Reorder first (written against current roster), then
+                    # add/remove agents so new agents go to end of order
+                    active_agents = check_for_reorder(run_dir, workspace, active_agents)
                     active_agents = check_for_new_agents(run_dir, workspace, agent_configs, active_agents)
                     active_agents = check_for_retirements(run_dir, workspace, active_agents)
-                    active_agents = check_for_reorder(run_dir, workspace, active_agents)
                     save_roster(run_dir, agent_configs, active_agents)
 
         # --- Implementation ---
@@ -274,9 +276,11 @@ def main():
                     run_facilitator(workspace, logs_dir, settings_file,
                                     round_num, end_round, active_agents)
                     collect_facilitator_files(workspace, run_dir)
+                    # Reorder first (written against current roster), then
+                    # add/remove agents so new agents go to end of order
+                    active_agents = check_for_reorder(run_dir, workspace, active_agents)
                     active_agents = check_for_new_agents(run_dir, workspace, agent_configs, active_agents)
                     active_agents = check_for_retirements(run_dir, workspace, active_agents)
-                    active_agents = check_for_reorder(run_dir, workspace, active_agents)
                     save_roster(run_dir, agent_configs, active_agents)
 
         if _shutdown_requested:
