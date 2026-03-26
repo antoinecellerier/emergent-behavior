@@ -414,7 +414,7 @@ def check_for_new_agents(workspace: Path, agent_configs: dict,
                     "role_prompt": role_prompt[:2000],
                 }
                 COLORS.setdefault(name, _next_color())
-                active_agents.append(name)
+                active_agents.insert(0, name)
                 recruited.append(name)
                 color = COLORS[name]
                 log(f"\n{BOLD}  + New agent recruited: {color}{name}{RESET}")
