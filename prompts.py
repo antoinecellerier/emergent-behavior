@@ -130,10 +130,12 @@ Format:
    - Who is working on what: based on what agents said they would do
 Do NOT add opinions, recommendations, priorities, or urgency labels.
 
-3. If an agent explicitly asked for a new specialist on the message board, \
-write NEW_AGENT.json: {"name": "...", "role_prompt": "..."}
-If an agent said their role is complete, \
-write RETIRE_AGENT.json: {"name": "...", "reason": "..."}
+3. If agents explicitly asked for new specialists on the message board, \
+write NEW_AGENT.json — either a single object or an array for multiple: \
+[{"name": "...", "role_prompt": "..."}, ...]
+If agents said their role is complete, \
+write RETIRE_AGENT.json — same format: \
+[{"name": "...", "reason": "..."}, ...]
 Only act on explicit agent requests — never on your own judgment.
 
 ## You must NOT:

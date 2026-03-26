@@ -369,28 +369,34 @@ def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
 
 def check_for_new_agents(workspace: Path, agent_configs: dict,
                           active_agents: list[str]) -> list[str]:
-    """Check if the Facilitator requested a new agent via NEW_AGENT.json."""
+    """Check for new agents via NEW_AGENT.json (single object or array)."""
     new_agent_file = workspace / "NEW_AGENT.json"
     if not new_agent_file.exists():
         return active_agents
 
     try:
         data = json.loads(new_agent_file.read_text())
-        name = data["name"]
-        role_prompt = data["role_prompt"]
+        entries = data if isinstance(data, list) else [data]
+        recruited = []
 
-        if name not in agent_configs:
-            agent_configs[name] = {
-                "model": "sonnet",
-                "effort": "medium",
-                "disallowed_tools": [],
-                "role_prompt": role_prompt[:2000],
-            }
-            COLORS.setdefault(name, "\033[1;36m")
-            active_agents.append(name)
-            log(f"\n{BOLD}  + New agent recruited: {name}{RESET}")
+        for entry in entries:
+            name = entry["name"]
+            role_prompt = entry["role_prompt"]
+            if name not in agent_configs:
+                agent_configs[name] = {
+                    "model": "sonnet",
+                    "effort": "medium",
+                    "disallowed_tools": [],
+                    "role_prompt": role_prompt[:2000],
+                }
+                COLORS.setdefault(name, "\033[1;36m")
+                active_agents.append(name)
+                recruited.append(name)
+                log(f"\n{BOLD}  + New agent recruited: {name}{RESET}")
+
         new_agent_file.unlink()
-        git_commit(workspace, f"Recruited new agent: {name}")
+        if recruited:
+            git_commit(workspace, f"Recruited: {', '.join(recruited)}")
     except (json.JSONDecodeError, KeyError) as e:
         log(f"{DIM}  (invalid NEW_AGENT.json: {e}){RESET}")
 
@@ -398,21 +404,27 @@ def check_for_new_agents(workspace: Path, agent_configs: dict,
 
 
 def check_for_retirements(workspace: Path, active_agents: list[str]) -> list[str]:
-    """Check if the Facilitator requested retiring an agent via RETIRE_AGENT.json."""
+    """Check for retirements via RETIRE_AGENT.json (single object or array)."""
     retire_file = workspace / "RETIRE_AGENT.json"
     if not retire_file.exists():
         return active_agents
 
     try:
         data = json.loads(retire_file.read_text())
-        name = data["name"]
-        reason = data.get("reason", "no reason given")
+        entries = data if isinstance(data, list) else [data]
+        retired = []
 
-        if name in active_agents:
-            active_agents.remove(name)
-            log(f"\n{BOLD}  - Agent retired: {name} ({reason}){RESET}")
+        for entry in entries:
+            name = entry["name"]
+            reason = entry.get("reason", "no reason given")
+            if name in active_agents:
+                active_agents.remove(name)
+                retired.append(name)
+                log(f"\n{BOLD}  - Agent retired: {name} ({reason}){RESET}")
+
         retire_file.unlink()
-        git_commit(workspace, f"Retired agent: {name} — {reason}")
+        if retired:
+            git_commit(workspace, f"Retired: {', '.join(retired)}")
     except (json.JSONDecodeError, KeyError) as e:
         log(f"{DIM}  (invalid RETIRE_AGENT.json: {e}){RESET}")
 
