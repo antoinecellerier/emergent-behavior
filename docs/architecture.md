@@ -86,15 +86,15 @@ The Facilitator is a meta-agent (sonnet) that runs between rounds. It reads the 
 
 ## Dynamic Agent Management
 
-Three JSON files in the workspace trigger roster changes, processed after each Facilitator turn:
+Three JSON files trigger roster changes, processed after each Facilitator turn. The Facilitator writes them to the workspace; the orchestrator moves them to the run root before processing (so agents never see them):
 
 | File | Format | Effect |
 |------|--------|--------|
-| `NEW_AGENT.json` | `{"name": "...", "role_prompt": "..."}` or array | New agent added to front of turn order. Model/effort locked to sonnet/medium. Prompt capped at 2000 chars. Inherits `ALWAYS_BLOCKED` tools. |
+| `NEW_AGENT.json` | `{"name": "...", "role_prompt": "...", "requested_by": "..."}` or array | New agent added to end of turn order. Model/effort locked to sonnet/medium. Prompt capped at 2000 chars. Inherits `ALWAYS_BLOCKED` tools. Recruitment context appended to role_prompt. |
 | `RETIRE_AGENT.json` | `{"name": "...", "reason": "..."}` or array | Agent removed from active list |
 | `REORDER_AGENTS.json` | `["Agent1", "Agent2", ...]` | Turn order changed (must list all active agents) |
 
-Files are deleted after processing. Changes are committed and persisted to `AGENT_ROSTER.json` at the run root for resume support.
+Files are deleted after processing. Order: reorder (against current roster) → new agents (appended) → retirements. Changes are committed and persisted to `AGENT_ROSTER.json` at the run root for resume support.
 
 Dynamically recruited agents get colors from a rotating pool of 10 terminal colors.
 
@@ -103,7 +103,7 @@ Dynamically recruited agents get colors from a rotating pool of 10 terminal colo
 Two-layer isolation:
 
 **Layer 1 -- Bubblewrap (Bash commands):**
-- Filesystem: `allowRead: ["."]`, `denyRead: ["~"]`, `allowWrite: ["."]`, `denyWrite: ["~"]`
+- Filesystem: `allowRead: ["."]`, `denyRead: ["/home"]`, `allowWrite: ["."]`, `denyWrite: ["/home"]`
 - Network: `allowedDomains: []`, `allowManagedDomainsOnly: true` (blocks all network)
 - `allowUnsandboxedCommands: false`
 
@@ -112,6 +112,10 @@ Two-layer isolation:
 - Allowed: workspace directory (via `SANDBOX_ALLOWED_DIR` env var), `/usr`, `/tmp`, `/proc`, `/etc/timezone`, `/etc/localtime`
 - Path traversal protection via `realpath -m`, fail-closed if `realpath` unavailable
 - Per-tool field extraction (`file_path` for Read/Edit/Write, `path` for Glob/Grep)
+
+**Layer 3 -- Context isolation:**
+- `claudeMdExcludes` in `workspace/.claude/settings.local.json` blocks the orchestrator's CLAUDE.md and `.claude/` from leaking into agent context
+- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` env var prevents agents from loading the user's auto-memory files
 
 **Permission mode:** `bypassPermissions` (no interactive prompts, respects sandbox boundaries)
 
@@ -146,7 +150,7 @@ The `result` event's `is_error` flag is checked. If true and the message contain
 
 ## Stream Processing
 
-Agents run with `--output-format stream-json --verbose`. The orchestrator reads events line-by-line via `readline()` (not `for line in proc.stdout` which buffers on pipes):
+Agents run with `--output-format stream-json --verbose`. The orchestrator reads events via `select()` + `readline()` with a deadline timeout (prevents pipe deadlock if the subprocess hangs):
 
 - `assistant` events with `tool_use` blocks: logged with tool hints (Bash descriptions, Edit snippets, Read ranges)
 - `assistant` events with `text` blocks: collected as fallback if result is empty

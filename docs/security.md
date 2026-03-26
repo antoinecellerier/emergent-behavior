@@ -20,7 +20,7 @@ Important: `--tools` and `--allowedTools` do NOT work with `--permission-mode by
 ### Layer 2: Bubblewrap Sandbox (Bash commands)
 
 OS-level isolation for all Bash subprocesses via bubblewrap:
-- Filesystem: write restricted to workspace (`.`), read denied for home (`~`), allow overrides deny
+- Filesystem: write restricted to workspace (`.`), read denied for `/home` (all users), allow overrides deny for the workspace path chain
 - Network: all domains blocked (`allowedDomains: []`, `allowManagedDomainsOnly: true`)
 - Unsandboxed commands disabled (`allowUnsandboxedCommands: false`)
 
@@ -40,6 +40,13 @@ The sandbox settings file is generated per-run in the logs directory, with the h
 ### Layer 4: Permission Mode
 
 `--permission-mode bypassPermissions` -- no interactive prompts, but respects sandbox and hook boundaries. This is distinct from `--dangerously-skip-permissions` which bypasses everything including the sandbox.
+
+### Layer 5: Context Isolation
+
+Agents are prevented from seeing orchestrator internals and user state:
+- `claudeMdExcludes` in `workspace/.claude/settings.local.json` blocks the parent repo's CLAUDE.md and `.claude/` directory from being loaded into agent context
+- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` env var prevents agents from reading or writing to the user's `~/.claude/projects/` auto-memory files
+- Note: `claudeMdExcludes` only works via `.claude/settings.local.json`, not the `--settings` flag
 
 ### Dynamic Agent Constraints
 
@@ -84,4 +91,10 @@ A comprehensive security review identified 11 findings. Addressed:
 - Edge cases (missing paths, empty inputs)
 - Message board archival logic
 
-1 integration test in `test_runner.py` for network isolation (curl blocked by bubblewrap).
+8 integration tests in `test_runner.py` covering:
+- Stream-json parsing and result capture
+- Tool restriction (`--disallowedTools`)
+- Sandbox settings and budget
+- Network isolation (curl blocked by bubblewrap)
+- Bubblewrap blocks Bash from reading home directory
+- `claudeMdExcludes` prevents parent CLAUDE.md leakage

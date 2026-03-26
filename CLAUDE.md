@@ -11,7 +11,7 @@ An orchestrator (`orchestrator.py`) that spawns multiple Claude Code agents (`cl
 
 ## Commands
 - New experiment: `python3 orchestrator.py --rounds 3` (creates `runs/<timestamp>/`)
-- Resume: `python3 orchestrator.py --resume <run_dir_name> --start-round N --rounds M`
+- Resume: `python3 orchestrator.py --resume <run_dir_name> --rounds M`
 - List runs: `ls runs/`
 - Run all tests: `python3 -m pytest test_runner.py -v`
 - Run single test: `python3 -m pytest test_runner.py -v -k "test_name"`
@@ -24,7 +24,7 @@ An orchestrator (`orchestrator.py`) that spawns multiple Claude Code agents (`cl
 - `board.py` — message board append/archive logic
 - `test_runner.py` — pytest suite for CLI integration (stream-json parsing, tool restriction, sandbox)
 - `test_real_agent.py` — reproduces real agent conditions (long prompts, tool use, result capture)
-- `test_sandbox.py` — 27 pytest tests for the sandbox hook (read/write blocking, path traversal, archival)
+- `test_sandbox.py` — pytest tests for the sandbox hook (read/write blocking, path traversal, archival)
 - `sandbox-settings.json` — bubblewrap filesystem isolation config
 - `.claude/hooks/sandbox-read.sh` — default-deny file access hook
 - `workspace/` — agents' shared workspace (gitignored, has its own git repo)
@@ -55,9 +55,7 @@ When making significant changes (new features, architectural changes, security u
 - `--tools` and `--allowedTools` do NOT reliably restrict tools
 - `--output-format stream-json` requires `--verbose`
 - Pipe prompts via stdin to `claude -p` (avoid long CLI arguments)
-- Use `readline()` loop, not `for line in proc.stdout` (avoids pipe buffering)
-- Pipe prompts via stdin to `claude -p` (avoid long CLI arguments)
-- Use `readline()` loop, not `for line in proc.stdout` (avoids pipe buffering)
+- Use `select()` + `readline()`, not `for line in proc.stdout` (avoids pipe buffering and deadlocks)
 
 ### Commit discipline
 - Experiment workspace commits use agent summary as message: `[Agent] RN: first line of summary`
