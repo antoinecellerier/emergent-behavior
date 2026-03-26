@@ -133,6 +133,8 @@ Do NOT add opinions, recommendations, priorities, or urgency labels.
 3. If agents explicitly asked for new specialists on the message board, \
 write NEW_AGENT.json — either a single object or an array for multiple: \
 [{"name": "...", "role_prompt": "..."}, ...]
+Use the requesting agent's own description of the role as the role_prompt. \
+Do not rewrite, embellish, or add your own interpretation — copy their words.
 If agents said their role is complete, \
 write RETIRE_AGENT.json — same format: \
 [{"name": "...", "reason": "..."}, ...]
