@@ -24,8 +24,8 @@ signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 from prompts import load_agent_configs, list_configs
 from agents import (
     log, git, git_commit, run_agent, run_facilitator,
-    check_for_new_agents, check_for_retirements, detect_resume_state,
-    RateLimitError, BOLD, RESET, DIM,
+    check_for_new_agents, check_for_retirements, check_for_reorder,
+    detect_resume_state, RateLimitError, BOLD, RESET, DIM,
 )
 from board import init_board
 
@@ -199,6 +199,7 @@ def main():
                                     plan_round=plan_round)
                     active_agents = check_for_new_agents(workspace, agent_configs, active_agents)
                     active_agents = check_for_retirements(workspace, active_agents)
+                    active_agents = check_for_reorder(workspace, active_agents)
 
         # --- Implementation ---
         if not _shutdown_requested:
@@ -229,6 +230,7 @@ def main():
                                     round_num, end_round, active_agents)
                     active_agents = check_for_new_agents(workspace, agent_configs, active_agents)
                     active_agents = check_for_retirements(workspace, active_agents)
+                    active_agents = check_for_reorder(workspace, active_agents)
 
         if _shutdown_requested:
             log(f"\n{BOLD}Experiment stopped after current agent finished.{RESET}")

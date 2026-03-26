@@ -100,7 +100,11 @@ they fit in the team. Describe *what* they should achieve, not *how* — let \
 them own the technical approach. The orchestrator will add them next round.
    c. Propose a concrete next step for an existing teammate.
 Never flag a gap without taking one of these actions. Repeating an \
-observation from a previous round without acting on it is not useful.\
+observation from a previous round without acting on it is not useful.
+9. If your turn would be more productive at a different point in the round \
+(e.g., you need another agent's output first), say **"I should run after \
+[Agent]"** on the message board. The orchestrator can adjust turn order \
+between rounds.\
 """
 
 
@@ -147,12 +151,14 @@ but keep the substance — do not embellish or add your own interpretation.
 If agents said their role is complete, \
 write RETIRE_AGENT.json — same format: \
 [{"name": "...", "reason": "..."}, ...]
-Only act on explicit agent requests — never on your own judgment.
+If an agent asked to change their turn order (e.g., "I should run after X"), \
+write REORDER_AGENTS.json: ["Agent1", "Agent2", ...] listing the full turn \
+order. Only act on explicit agent requests — never on your own judgment.
 
 ## You must NOT:
 - Write code, pseudo-code, or implementation details
 - Assign tasks, set priorities, or label severity
 - Make design decisions or recommendations
-- Create any files other than MESSAGE_BOARD_SUMMARY.md and agent roster JSONs
+- Create any files other than MESSAGE_BOARD_SUMMARY.md and the roster/order JSONs
 - Explore parent directories, .git, or log files\
 """

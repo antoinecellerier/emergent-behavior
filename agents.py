@@ -503,6 +503,33 @@ def check_for_retirements(workspace: Path, active_agents: list[str]) -> list[str
     return active_agents
 
 
+def check_for_reorder(workspace: Path, active_agents: list[str]) -> list[str]:
+    """Check for turn order changes via REORDER_AGENTS.json."""
+    reorder_file = workspace / "REORDER_AGENTS.json"
+    if not reorder_file.exists():
+        return active_agents
+
+    try:
+        new_order = json.loads(reorder_file.read_text())
+        if not isinstance(new_order, list):
+            raise ValueError("expected a JSON array")
+
+        # Validate: must contain exactly the active agents
+        if set(new_order) != set(active_agents):
+            log(f"{DIM}  (REORDER_AGENTS.json doesn't match active agents, ignoring){RESET}")
+        else:
+            old = ", ".join(active_agents)
+            active_agents[:] = new_order
+            log(f"\n{BOLD}  Turn order changed: {' → '.join(active_agents)}{RESET}")
+            git_commit(workspace, f"Reordered agents: {' → '.join(active_agents)}")
+
+        reorder_file.unlink()
+    except (json.JSONDecodeError, ValueError) as e:
+        log(f"{DIM}  (invalid REORDER_AGENTS.json: {e}){RESET}")
+
+    return active_agents
+
+
 def detect_resume_state(workspace: Path, agents: list[str]) -> tuple[int, list[str]]:
     """Parse workspace git log to find where to resume.
 
