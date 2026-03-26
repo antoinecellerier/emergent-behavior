@@ -11,6 +11,11 @@ from pathlib import Path
 from prompts import ALWAYS_BLOCKED, FACILITATOR_SYSTEM, build_shared_context
 
 
+class RateLimitError(Exception):
+    """Raised when Claude hits a usage limit."""
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Terminal colors
 # ---------------------------------------------------------------------------
@@ -229,6 +234,7 @@ def run_claude(workspace: Path, settings_file: Path,
     result_text = ""
     text_chunks: list[str] = []
     raw_events: list[str] = []
+    _hit_rate_limit = False
     env = {**os.environ, "SANDBOX_ALLOWED_DIR": str(workspace)}
 
     try:
@@ -274,7 +280,9 @@ def run_claude(workspace: Path, settings_file: Path,
             if etype == "result":
                 result_text = event.get("result", "")
                 subtype = event.get("subtype", "")
-                if subtype and subtype != "success":
+                if event.get("is_error"):
+                    _hit_rate_limit = True
+                elif subtype and subtype != "success":
                     log(f"{DIM}    (stop: {subtype}){RESET}")
 
         proc.wait(timeout=timeout)
@@ -286,6 +294,11 @@ def run_claude(workspace: Path, settings_file: Path,
         if proc.returncode != 0 and not result_text:
             stderr = proc.stderr.read().strip()
             result_text = f"(agent exited with code {proc.returncode})\n{stderr}"
+
+        # Detect rate limiting via is_error flag on result event
+        if _hit_rate_limit:
+            log(f"\n{BOLD}Rate limit reached: {result_text.strip()}{RESET}")
+            raise RateLimitError(result_text.strip())
 
     except subprocess.TimeoutExpired:
         proc.kill()

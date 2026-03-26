@@ -20,7 +20,7 @@ from prompts import load_agent_configs, list_configs
 from agents import (
     log, git, git_commit, run_agent, run_facilitator,
     check_for_new_agents, check_for_retirements, detect_resume_state,
-    BOLD, RESET, DIM,
+    RateLimitError, BOLD, RESET, DIM,
 )
 from board import init_board
 
@@ -228,6 +228,9 @@ def main():
         if _shutdown_requested:
             log(f"\n{BOLD}Experiment stopped after current agent finished.{RESET}")
 
+    except RateLimitError as e:
+        log(f"\n{BOLD}Experiment paused — rate limit hit.{RESET}")
+        log(f"{DIM}Resume when limit resets: python3 orchestrator.py --resume {run_dir.name} --rounds {end_round - round_num}{RESET}")
     except Exception as e:
         log(f"\n{BOLD}Experiment error: {e}{RESET}")
 
