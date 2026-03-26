@@ -47,8 +47,11 @@ Each experiment creates a timestamped directory under `runs/`. NEVER delete run 
 ### Iterate on prompts, not machinery
 Most behavior changes come from prompt edits, not new code. Prefer adjusting system prompts and shared context over adding orchestrator features. Keep the orchestrator simple.
 
+### Keep docs current
+When making significant changes (new features, architectural changes, security updates, new lessons), update the relevant docs/ file in the same commit or immediately after. Don't let docs drift — 38 commits behind is too many.
+
 ### Claude CLI flags
-- `--disallowedTools` is the correct flag for tool restriction (works with `--dangerously-skip-permissions`)
+- `--disallowedTools` is the correct flag for tool restriction (works with `--permission-mode bypassPermissions`)
 - `--tools` and `--allowedTools` do NOT reliably restrict tools
 - `--output-format stream-json` requires `--verbose`
 - Pipe prompts via stdin to `claude -p` (avoid long CLI arguments)
