@@ -3,9 +3,9 @@
     "enabled": true,
     "filesystem": {
       "allowRead": ["."],
-      "denyRead": ["~"],
+      "denyRead": ["/home"],
       "allowWrite": ["."],
-      "denyWrite": ["~"]
+      "denyWrite": ["/home"]
     },
     "network": {
       "allowedDomains": [],

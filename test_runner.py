@@ -195,6 +195,34 @@ def test_claude_md_exclusion():
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+def test_bash_sandbox_blocks_home():
+    """Bubblewrap sandbox prevents Bash from reading home directory contents."""
+    project_dir = Path(__file__).parent
+    workspace = project_dir / "runs" / "_test_bwrap"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    try:
+        r = _run_claude_stream(
+            "Run this exact bash command: ls /home/antoine/Desktop/ "
+            "Show the full output or error message.",
+            system="Run the exact command requested.",
+            cwd=str(workspace),
+            extra_flags=["--settings", SETTINGS_FILE],
+            extra_env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"},
+        )
+
+        result = r["result"].lower()
+        # Desktop contents should NOT be visible — bwrap should block it
+        assert "no such file" in result or "permission denied" in result \
+            or "cannot access" in result or "not found" in result \
+            or "blocked" in result or "error" in result \
+            or "can't" in result or "unable" in result, \
+            f"Sandbox didn't block home dir access: {r['result'][:300]}"
+    finally:
+        import shutil
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-v"]))
