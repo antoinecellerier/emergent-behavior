@@ -267,7 +267,11 @@ def run_claude(workspace: Path, settings_file: Path,
     text_chunks: list[str] = []
     raw_events: list[str] = []
     _hit_rate_limit = False
-    env = {**os.environ, "SANDBOX_ALLOWED_DIR": str(workspace)}
+    env = {
+        **os.environ,
+        "SANDBOX_ALLOWED_DIR": str(workspace),
+        "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    }
 
     try:
         proc = subprocess.Popen(
@@ -498,10 +502,32 @@ def load_roster(run_dir: Path) -> tuple[dict, list[str]] | None:
 # Dynamic agent management
 # ---------------------------------------------------------------------------
 
-def check_for_new_agents(workspace: Path, agent_configs: dict,
+# Facilitator control files — written to workspace, moved to run root
+_FACILITATOR_FILES = ["NEW_AGENT.json", "RETIRE_AGENT.json", "REORDER_AGENTS.json"]
+
+
+def collect_facilitator_files(workspace: Path, run_dir: Path) -> None:
+    """Move Facilitator control files from workspace to run root.
+
+    The Facilitator writes these to workspace (its cwd), but they're
+    orchestrator-consumed signals that agents shouldn't see.
+    """
+    for name in _FACILITATOR_FILES:
+        src = workspace / name
+        if src.exists():
+            dst = run_dir / name
+            dst.write_text(src.read_text())
+            src.unlink()
+            # Remove from workspace git so agents never see them
+            git(workspace, "add", name)
+    # Commit removal if anything was staged
+    git_commit(workspace, "Move Facilitator control files to run root")
+
+
+def check_for_new_agents(run_dir: Path, workspace: Path, agent_configs: dict,
                           active_agents: list[str]) -> list[str]:
     """Check for new agents via NEW_AGENT.json (single object or array)."""
-    new_agent_file = workspace / "NEW_AGENT.json"
+    new_agent_file = run_dir / "NEW_AGENT.json"
     if not new_agent_file.exists():
         return active_agents
 
@@ -536,9 +562,10 @@ def check_for_new_agents(workspace: Path, agent_configs: dict,
     return active_agents
 
 
-def check_for_retirements(workspace: Path, active_agents: list[str]) -> list[str]:
+def check_for_retirements(run_dir: Path, workspace: Path,
+                          active_agents: list[str]) -> list[str]:
     """Check for retirements via RETIRE_AGENT.json (single object or array)."""
-    retire_file = workspace / "RETIRE_AGENT.json"
+    retire_file = run_dir / "RETIRE_AGENT.json"
     if not retire_file.exists():
         return active_agents
 
@@ -564,9 +591,10 @@ def check_for_retirements(workspace: Path, active_agents: list[str]) -> list[str
     return active_agents
 
 
-def check_for_reorder(workspace: Path, active_agents: list[str]) -> list[str]:
+def check_for_reorder(run_dir: Path, workspace: Path,
+                      active_agents: list[str]) -> list[str]:
     """Check for turn order changes via REORDER_AGENTS.json."""
-    reorder_file = workspace / "REORDER_AGENTS.json"
+    reorder_file = run_dir / "REORDER_AGENTS.json"
     if not reorder_file.exists():
         return active_agents
 

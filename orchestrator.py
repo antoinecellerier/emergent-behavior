@@ -24,6 +24,7 @@ signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 from prompts import load_agent_configs, list_configs
 from agents import (
     log, git, git_commit, run_agent, run_facilitator,
+    collect_facilitator_files,
     check_for_new_agents, check_for_retirements, check_for_reorder,
     detect_resume_state, save_roster, load_roster,
     RateLimitError, BOLD, RESET, DIM,
@@ -70,6 +71,32 @@ def _generate_settings(logs_dir: Path) -> Path:
     return settings_file
 
 
+def _write_claude_md_excludes(workspace: Path) -> None:
+    """Prevent agents from loading CLAUDE.md files from parent directories.
+
+    Claude walks up the directory tree and would find the orchestrator's
+    CLAUDE.md, leaking project paths and wasting tokens. The exclusion
+    must live in .claude/settings.local.json (--settings doesn't support it).
+    """
+    claude_dir = workspace / ".claude"
+    claude_dir.mkdir(exist_ok=True)
+    settings_local = claude_dir / "settings.local.json"
+
+    excludes = [
+        str(Path(PROJECT_DIR) / "CLAUDE.md"),
+        str(Path(PROJECT_DIR) / ".claude" / "**"),
+        str(Path.home() / ".claude" / "**"),
+    ]
+
+    # Merge with existing settings if present
+    if settings_local.exists():
+        existing = json.loads(settings_local.read_text())
+    else:
+        existing = {}
+    existing["claudeMdExcludes"] = excludes
+    settings_local.write_text(json.dumps(existing, indent=2) + "\n")
+
+
 def setup(workspace: Path, logs_dir: Path, resume: bool) -> Path:
     """Initialise workspace, git repo, message board. Returns settings file path."""
     workspace.mkdir(exist_ok=True)
@@ -79,6 +106,8 @@ def setup(workspace: Path, logs_dir: Path, resume: bool) -> Path:
     if not (workspace / ".git").exists():
         git(workspace, "init")
         git(workspace, "checkout", "-b", "main")
+
+    _write_claude_md_excludes(workspace)
 
     init_board(workspace)
     if not (workspace / "MESSAGE_BOARD.md").exists():
@@ -208,9 +237,10 @@ def main():
                     run_facilitator(workspace, logs_dir, settings_file,
                                     0, end_round, active_agents,
                                     plan_round=plan_round)
-                    active_agents = check_for_new_agents(workspace, agent_configs, active_agents)
-                    active_agents = check_for_retirements(workspace, active_agents)
-                    active_agents = check_for_reorder(workspace, active_agents)
+                    collect_facilitator_files(workspace, run_dir)
+                    active_agents = check_for_new_agents(run_dir, workspace, agent_configs, active_agents)
+                    active_agents = check_for_retirements(run_dir, workspace, active_agents)
+                    active_agents = check_for_reorder(run_dir, workspace, active_agents)
                     save_roster(run_dir, agent_configs, active_agents)
 
         # --- Implementation ---
@@ -240,9 +270,10 @@ def main():
                 if use_facilitator and round_num % args.facilitator_every == 0:
                     run_facilitator(workspace, logs_dir, settings_file,
                                     round_num, end_round, active_agents)
-                    active_agents = check_for_new_agents(workspace, agent_configs, active_agents)
-                    active_agents = check_for_retirements(workspace, active_agents)
-                    active_agents = check_for_reorder(workspace, active_agents)
+                    collect_facilitator_files(workspace, run_dir)
+                    active_agents = check_for_new_agents(run_dir, workspace, agent_configs, active_agents)
+                    active_agents = check_for_retirements(run_dir, workspace, active_agents)
+                    active_agents = check_for_reorder(run_dir, workspace, active_agents)
                     save_roster(run_dir, agent_configs, active_agents)
 
         if _shutdown_requested:

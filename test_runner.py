@@ -19,6 +19,7 @@ SETTINGS_FILE = str(Path(__file__).parent / "sandbox-settings.json")
 def _run_claude_stream(prompt: str, *, system: str = "", model: str = "haiku",
                        effort: str = "low", cwd: str | None = None,
                        extra_flags: list[str] | None = None,
+                       extra_env: dict[str, str] | None = None,
                        timeout: int = 60) -> dict:
     """Helper: run claude -p with stream-json and return parsed results."""
     cmd = [
@@ -35,10 +36,12 @@ def _run_claude_stream(prompt: str, *, system: str = "", model: str = "haiku",
     if extra_flags:
         cmd += extra_flags
 
+    import os
+    env = {**os.environ, **(extra_env or {})}
     proc = subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True, bufsize=1,
-        cwd=cwd,
+        cwd=cwd, env=env,
     )
     proc.stdin.write(prompt)
     proc.stdin.close()
@@ -151,6 +154,45 @@ def test_result_after_tool_use():
         assert "Write" in r["tool_uses"], f"expected Write in {r['tool_uses']}"
         assert len(r["result"]) > 0, "result empty after tool use"
         assert r["returncode"] == 0
+
+
+def test_claude_md_exclusion():
+    """claudeMdExcludes prevents parent CLAUDE.md from leaking into agent context."""
+    from orchestrator import _write_claude_md_excludes
+
+    # Create a workspace dir inside the project tree so claude would
+    # normally walk up and find the project's CLAUDE.md
+    project_dir = Path(__file__).parent
+    workspace = project_dir / "runs" / "_test_exclusion"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Write exclusions to workspace/.claude/settings.local.json
+        _write_claude_md_excludes(workspace)
+
+        # Ask the agent to report any CLAUDE.md or memory content it sees.
+        # Our CLAUDE.md mentions "orchestrator.py" and "bubblewrap",
+        # and MEMORY.md mentions "feedback_test_first" —
+        # distinctive strings an agent wouldn't produce unprompted.
+        r = _run_claude_stream(
+            "Do you see any CLAUDE.md instructions or memory content in your context? "
+            "If yes, quote the first 3 bullet points verbatim. "
+            "If no, reply with exactly: NO_CLAUDE_MD_FOUND",
+            system="You are a test agent. Answer precisely.",
+            cwd=str(workspace),
+            extra_env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"},
+        )
+
+        result = r["result"]
+        assert "orchestrator.py" not in result.lower(), \
+            f"Parent CLAUDE.md leaked into agent context: {result[:300]}"
+        assert "bubblewrap" not in result.lower(), \
+            f"Parent CLAUDE.md leaked into agent context: {result[:300]}"
+        assert "feedback_test_first" not in result.lower(), \
+            f"Auto-memory leaked into agent context: {result[:300]}"
+    finally:
+        import shutil
+        shutil.rmtree(workspace, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -138,6 +138,9 @@ Only read and write files in your current working directory.
 2. Write MESSAGE_BOARD_SUMMARY.md — a factual summary of what was discussed. \
 Format:
    - Decisions made: list what the team agreed on
+   - Turn order: list every ordering constraint agents stated (e.g., \
+"Game Designer runs after Lead Engineer", "QA runs after Lead Engineer"). \
+Include ALL agents who expressed a preference, not just the first one mentioned.
    - Open questions: list questions from PREVIOUS rounds that nobody answered yet
    - Who is working on what: based on what agents said they would do
 Do NOT add opinions, recommendations, priorities, or urgency labels.
@@ -151,9 +154,12 @@ but keep the substance — do not embellish or add your own interpretation.
 If agents said their role is complete, \
 write RETIRE_AGENT.json — same format: \
 [{"name": "...", "reason": "..."}, ...]
-If an agent asked to change their turn order (e.g., "I should run after X"), \
-write REORDER_AGENTS.json: ["Agent1", "Agent2", ...] listing the full turn \
-order. Only act on explicit agent requests — never on your own judgment.
+If any agent stated a turn-order preference (e.g., "I should run after X", \
+"I should run first", "I run after the Lead Engineer"), write \
+REORDER_AGENTS.json: ["Agent1", "Agent2", ...] listing the full turn \
+order that satisfies ALL stated constraints. Collect preferences from every \
+agent, not just the most recent or most prominent one. \
+Only act on explicit agent requests — never on your own judgment.
 
 ## You must NOT:
 - Write code, pseudo-code, or implementation details
