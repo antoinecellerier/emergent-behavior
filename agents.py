@@ -28,7 +28,10 @@ BOLD  = "\033[1m"
 
 
 def log(msg: str = ""):
-    print(msg, flush=True)
+    try:
+        print(msg, flush=True)
+    except BrokenPipeError:
+        pass  # stdout closed (e.g. tee killed by Ctrl-C)
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +233,15 @@ def run_claude(workspace: Path, settings_file: Path,
     except subprocess.TimeoutExpired:
         proc.kill()
         result_text = "(agent timed out)"
+    except KeyboardInterrupt:
+        # Ctrl-C during readline — wait for the agent to finish naturally
+        log(f"{DIM}    (waiting for agent to finish...){RESET}")
+        try:
+            proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        if not result_text and text_chunks:
+            result_text = "".join(text_chunks)
     except Exception as e:
         result_text = f"(error: {e})"
 
