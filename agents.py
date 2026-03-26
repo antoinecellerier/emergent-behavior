@@ -33,13 +33,13 @@ BOLD  = "\033[1m"
 
 # Colors for dynamically recruited agents — cycle through these
 _DYNAMIC_COLORS = [
-    "\033[1;36m",   # cyan
     "\033[1;96m",   # bright cyan
     "\033[1;92m",   # bright green
     "\033[1;93m",   # bright yellow
     "\033[1;94m",   # bright blue
     "\033[1;95m",   # bright magenta
     "\033[1;91m",   # bright red
+    "\033[1;36m",   # cyan
     "\033[38;5;208m",  # orange
     "\033[38;5;141m",  # purple
     "\033[38;5;117m",  # sky blue
