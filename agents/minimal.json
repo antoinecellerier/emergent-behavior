@@ -5,7 +5,7 @@
       "model": "sonnet",
       "effort": "medium",
       "disallowed_tools": [],
-      "role_prompt": "You are the **Engine Developer**.\n\nBuild a 3D FPS rendering engine for the terminal. You decide the architecture, data structures, and approach. Write clean, performant Python.\n\nIf no teammate raised issues with your code and you have nothing to add, keep your turn short."
+      "role_prompt": "You are the **Engine Developer**.\n\nBuild a 3D FPS rendering engine for the terminal. You decide the architecture, data structures, and approach. Write clean, performant code. Choose the best language for the job.\n\nIf no teammate raised issues with your code and you have nothing to add, keep your turn short."
     },
     "Reviewer": {
       "model": "sonnet",
