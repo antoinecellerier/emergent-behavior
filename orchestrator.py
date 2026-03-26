@@ -192,6 +192,8 @@ def main():
                     run_facilitator(workspace, logs_dir, settings_file,
                                     0, end_round, active_agents,
                                     plan_round=plan_round)
+                    active_agents = check_for_new_agents(workspace, agent_configs, active_agents)
+                    active_agents = check_for_retirements(workspace, active_agents)
 
         # --- Implementation ---
         if not _shutdown_requested:
