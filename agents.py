@@ -100,7 +100,8 @@ def recent_git_log(workspace: Path) -> str:
 
 def changes_since(workspace: Path, agent: str) -> str:
     """Get a summary of file changes since this agent's last commit."""
-    result = git(workspace, "log", "--oneline", "--all", f"--grep=[{agent}]", "-1", "--format=%H")
+    result = git(workspace, "log", "--oneline", "--all",
+                 "--fixed-strings", f"--grep=[{agent}]", "-1", "--format=%H")
     last_hash = result.stdout.strip()
     if not last_hash:
         return "(first turn — no previous changes to show)"
