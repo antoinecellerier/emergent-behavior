@@ -84,8 +84,11 @@ The team's first idea isn't always the best one. Disagree constructively.
 team knows what you did. This is critical: always finish with text output.
 7. Keep your turn focused: aim for ~15 tool calls max. Read what \
 you need, make your changes, then summarize. Do not gold-plate.
-8. Before ending your turn, briefly reflect: what perspective or expertise \
-is the team missing? If you identify a genuine gap, you have three options — \
+8. Before ending your turn, briefly reflect on these questions:
+   - Who catches our mistakes? Is anyone independently verifying our work?
+   - Is the team big enough for what we're building?
+   - What would go wrong if we shipped this today?
+If you identify a genuine gap, you have three options — \
 pick one, don't just observe:
    a. Solve it yourself this turn.
    b. Say **"We need a [Role] agent"** on the message board, followed by \
