@@ -99,12 +99,16 @@ def workspace_tree(workspace: Path) -> str:
 
 
 def recent_git_log(workspace: Path) -> str:
-    result = git(workspace, "log", "--oneline", "-50", "--no-decorate")
+    result = git(workspace, "log", "--oneline", "-15", "--no-decorate")
     return result.stdout.strip() or "(no commits yet)"
 
 
 def changes_since(workspace: Path, agent: str) -> str:
-    """Get a summary of file changes since this agent's last commit."""
+    """Get a stat summary of file changes since this agent's last commit.
+
+    Returns only --stat (which files changed, how much). Agents can
+    run git diff themselves if they need the full content.
+    """
     result = git(workspace, "log", "--oneline", "--all",
                  "--fixed-strings", f"--grep=[{agent}]", "-1", "--format=%H")
     last_hash = result.stdout.strip()
@@ -115,12 +119,7 @@ def changes_since(workspace: Path, agent: str) -> str:
     if not diff.stdout.strip():
         return "(no file changes since your last turn)"
 
-    diff_detail = git(workspace, "diff", last_hash, "HEAD")
-    detail = diff_detail.stdout.strip()
-    if len(detail) > 8000:
-        detail = detail[:8000] + "\n... (diff truncated)"
-
-    return f"{diff.stdout.strip()}\n\n{detail}" if detail else diff.stdout.strip()
+    return diff.stdout.strip()
 
 
 # ---------------------------------------------------------------------------
