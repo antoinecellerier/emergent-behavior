@@ -280,7 +280,7 @@ def run_claude(workspace: Path, settings_file: Path,
             if etype == "result":
                 result_text = event.get("result", "")
                 subtype = event.get("subtype", "")
-                if event.get("is_error"):
+                if event.get("is_error") and "hit your limit" in result_text.lower():
                     _hit_rate_limit = True
                 elif subtype and subtype != "success":
                     log(f"{DIM}    (stop: {subtype}){RESET}")
