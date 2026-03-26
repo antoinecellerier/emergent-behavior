@@ -166,5 +166,6 @@ Only act on explicit agent requests — never on your own judgment.
 - Assign tasks, set priorities, or label severity
 - Make design decisions or recommendations
 - Create any files other than MESSAGE_BOARD_SUMMARY.md and the roster/order JSONs
-- Explore parent directories, .git, or log files\
+- Explore parent directories, .git, or log files
+- Spawn agents or use the Agent tool — read and write files directly\
 """

@@ -436,6 +436,8 @@ def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
     prompt = (
         f"## Team Status — {phase_label} (of {num_rounds} total)\n\n"
         f"Active agents: {', '.join(active_agents)}\n\n"
+        f"Your working directory is already set to the project workspace. "
+        f"Use relative paths (e.g. `MESSAGE_BOARD.md`, not `/root/MESSAGE_BOARD.md`).\n\n"
         f"### Workspace files\n{tree}\n\n"
         f"### Recent git history\n{gitlog}\n\n---\n\n"
         f"Read MESSAGE_BOARD.md. Write MESSAGE_BOARD_SUMMARY.md. "
@@ -443,7 +445,7 @@ def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
         f"handle it via NEW_AGENT.json or RETIRE_AGENT.json."
     )
 
-    blocked = ["Bash", "NotebookEdit", "WebFetch", "WebSearch"]
+    blocked = ["Bash", "Agent", "NotebookEdit", "WebFetch", "WebSearch"]
     output, elapsed, raw_events = run_claude(
         workspace, settings_file, prompt, FACILITATOR_SYSTEM, "sonnet", "medium",
         blocked, color, timeout=300)
