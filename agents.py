@@ -418,7 +418,7 @@ def check_for_new_agents(workspace: Path, agent_configs: dict,
                 recruited.append(name)
                 color = COLORS[name]
                 log(f"\n{BOLD}  + New agent recruited: {color}{name}{RESET}")
-                log(f"{DIM}    {role_prompt[:200]}{RESET}")
+                log(f"{DIM}    {role_prompt}{RESET}")
 
         new_agent_file.unlink()
         if recruited:
