@@ -90,7 +90,7 @@ Three JSON files trigger roster changes, processed after each Facilitator turn. 
 
 | File | Format | Effect |
 |------|--------|--------|
-| `NEW_AGENT.json` | `{"name": "...", "role_prompt": "...", "requested_by": "..."}` or array | New agent added to end of turn order. Model/effort locked to sonnet/medium. Prompt capped at 2000 chars. Inherits `ALWAYS_BLOCKED` tools. Recruitment context appended to role_prompt. |
+| `NEW_AGENT.json` | `{"name": "...", "role_prompt": "...", "requested_by": "..."}` or array | New agent added to front of turn order (runs first next round). Model/effort locked to sonnet/medium. Prompt capped at 2000 chars. Inherits `ALWAYS_BLOCKED` tools. Recruitment context appended to role_prompt. |
 | `RETIRE_AGENT.json` | `{"name": "...", "reason": "..."}` or array | Agent removed from active list |
 | `REORDER_AGENTS.json` | `["Agent1", "Agent2", ...]` | Turn order changed (must list all active agents) |
 

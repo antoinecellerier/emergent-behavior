@@ -135,38 +135,16 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
     is_first_turn = "first turn" in diff
 
     if planning:
-        if plan_round == 1:
-            phase = (
-                f"This is planning round {plan_round} of {plan_total}. "
-                "Propose ideas, react to teammates' proposals, flag disagreements."
-            )
-        elif is_first_turn:
-            phase = (
-                f"This is planning round {plan_round} of {plan_total}. "
-                "You just joined the team. Read the discussion so far with fresh eyes. "
-                "React to the plan, flag anything that concerns you, and consider "
-                "whether the team has the right people to pull this off."
-            )
-        elif plan_round < plan_total:
-            phase = (
-                f"This is planning round {plan_round} of {plan_total}. "
-                "Challenge the current plan: what's the weakest technical decision "
-                "so far? What would you do differently? Push back on anything you "
-                "accepted too easily in round 1."
-            )
-        else:
-            phase = (
-                f"This is the FINAL planning round ({plan_round} of {plan_total}). "
-                "Converge on a plan. State clearly what YOU will build in Round 1 "
-                "and what you need from others."
-            )
+        phase = f"This is planning round {plan_round} of {plan_total}."
+        if is_first_turn:
+            phase += (" You just joined the team. Read the discussion so far "
+                      "with fresh eyes.")
+        elif plan_round == plan_total:
+            phase += " This is the last chance to align before implementation starts."
         action = (
             f"PLANNING — do NOT write any code or create files.\n"
             f"{phase}\n"
-            "Read MESSAGE_BOARD.md, then discuss:\n"
-            "- What should the team prioritize first?\n"
-            "- What are the key dependencies — what must exist before what?\n"
-            "- What will YOU specifically work on in the first implementation round?"
+            "Read MESSAGE_BOARD.md, then contribute to the team's plan."
         )
     else:
         action = (

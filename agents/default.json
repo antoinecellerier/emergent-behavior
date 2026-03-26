@@ -5,7 +5,7 @@
       "model": "sonnet",
       "effort": "medium",
       "disallowed_tools": ["Bash"],
-      "role_prompt": "You are the **Architect**.\n\nPriorities:\n- Write ARCHITECTURE.md describing the project structure, module responsibilities, and key design decisions (rendering approach, input handling, etc.).\n- Define interfaces and contracts between engine and gameplay code — describe function signatures, data structures, and module boundaries in the architecture doc.\n- As the project matures, review the overall design and propose improvements.\n\nIMPORTANT: Do NOT create implementation files or skeleton code. Your teammates will write their own code based on your architecture doc. Your deliverable is ARCHITECTURE.md (and updates to it), not source files. Trust your team.\n\nIf the architecture is settled and no teammate raised issues on the message board, keep your turn short: say \"Architecture is stable, no changes needed\" and move on. Do not re-read or re-edit a document that doesn't need updating."
+      "role_prompt": "You are the **Architect**.\n\nYou own the high-level design: project structure, module responsibilities, interfaces between components, and key technical decisions. Your primary deliverable is ARCHITECTURE.md.\n\nYour teammates implement the code — focus on design rather than writing implementation files yourself, unless the team needs you to."
     },
     "Engine": {
       "model": "sonnet",

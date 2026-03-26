@@ -39,18 +39,13 @@ This applies to all agents, including dynamically recruited ones. A recruited ag
 
 LLMs default to agreement. Without this, agents silently implement whatever the first agent proposes. This rule produced real disagreements -- e.g., Gameplay flagging file naming conflicts between Architect and Engine specs.
 
-### Rule 8 -- Reflection and Recruitment
+### Rule 5 -- Recruitment
 
-> "Before ending your turn, briefly reflect: what perspective or expertise is the team missing?"
+> "If the team is missing a perspective or capability, you can recruit a specialist."
 
-Forces agents to look outward. Agents have three options when they identify a gap:
-- **(a)** Solve it themselves this turn
-- **(b)** Request a new specialist: "We need a [Role] agent" with a description of outcomes and team fit
-- **(c)** Propose a concrete next step for an existing teammate
+Agents can request new team members by saying "We need a [Role] agent" on the message board. The Facilitator synthesizes the role_prompt; the orchestrator adds them next round. Earlier versions had an elaborate 3-option decision tree (solve it yourself / recruit / propose a step for a teammate), but this was over-prescriptive — agents naturally do all three without being told.
 
-The rule explicitly prohibits flagging a gap without acting, and prohibits repeating an observation from a previous round without taking action.
-
-### Rule 9 -- Turn Order Requests
+### Rule 6 -- Turn Order Requests
 
 > "If your turn would be more productive at a different point in the round (e.g., you need another agent's output first), say 'I should run after [Agent]' on the message board."
 
@@ -62,11 +57,9 @@ Agents may write to `TEAM_PRACTICES.md` to document working methods the team dis
 
 ## The Architect Problem
 
-Early experiments showed the Architect creating 12+ skeleton files in Round 1, leaving no room for other agents to make design decisions. Fix: the Architect prompt says "Do NOT create implementation files or skeleton code. Your deliverable is ARCHITECTURE.md, not .py files. Trust your team."
+Early experiments showed the Architect creating 12+ skeleton files in Round 1, leaving no room for other agents to make design decisions. The original fix was an absolute prohibition ("Do NOT create implementation files"). The current prompt is softer: "focus on design rather than writing implementation files yourself, unless the team needs you to." This preserves the lesson (don't over-create) while allowing the Architect to contribute code if the situation calls for it.
 
-This shifted the dynamic from "Architect dictates, others implement" to genuine collaboration where Engine and Gameplay make their own structural decisions within the architectural framework.
-
-The Architect also has Bash blocked, reinforcing that it produces documentation, not code.
+The Architect has Bash blocked, reinforcing that its primary role is design documentation.
 
 ## The Facilitator Problem
 
@@ -84,13 +77,11 @@ The Facilitator is also told that agents take turns sequentially, so a question 
 
 ## Planning Rounds
 
-Configurable planning rounds (default 3) before implementation, with Write/Edit/Bash blocked:
+Configurable planning rounds (default 3) before implementation, with Write/Edit/Bash blocked. The prompt is minimal — agents are told the round number and asked to "contribute to the team's plan." What they discuss is up to them.
 
-- **Round 1:** Propose approaches, identify dependencies
-- **Round 2 (devil's advocate):** "Challenge the current plan: what's the weakest technical decision so far? What would you do differently? Push back on anything you accepted too easily in round 1."
-- **Round 3:** Converge -- each agent states exactly what they'll build in Round 1
+Earlier versions scripted each round's theme (round 1: propose, round 2: devil's advocate, round 3: converge). This was removed as overly prescriptive — agents naturally challenge ideas, converge, and assign work without being told to. The only special cases: newly recruited agents joining mid-planning are told "you just joined — read with fresh eyes," and the final round notes "last chance to align before implementation."
 
-Newly recruited agents joining mid-planning get a different prompt: "You just joined the team. Read the discussion so far with fresh eyes. React to the plan, flag anything that concerns you."
+The "LLMs default to agreement" problem (see lessons-learned.md) is now addressed by Rule 2 in the ground rules ("disagree constructively") rather than a per-round devil's advocate script.
 
 The Facilitator runs between each planning round (not just implementation rounds), summarizing and handling any roster changes that arise during planning.
 
@@ -106,11 +97,11 @@ Priority order: recent messages > summary > archive.
 
 ## Dynamic Agent Lifecycle
 
-New agents are inserted at the front of the turn order so they go first in the next round and can establish context before other agents build on their work.
+New agents are inserted at the front of the turn order so they go first in the next round. This prevents the requesting agent from running again immediately after recruitment — the new agent gets a chance to establish context first.
 
 Dynamically recruited agents:
 - Inherit sonnet/medium model/effort (locked, not configurable by the recruiting agent)
-- Have their role_prompt capped at 2000 characters
+- Have their role_prompt capped at 2000 characters, with recruitment context appended
 - Inherit `ALWAYS_BLOCKED` tools
 - Receive the same shared context as all agents, including the "you own your domain" language
 - Get assigned colors from a rotating pool of 10 terminal colors

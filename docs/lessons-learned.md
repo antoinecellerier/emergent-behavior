@@ -14,12 +14,13 @@ Anti-pattern: making a code change and immediately running a full multi-agent ex
 
 Most behavioral improvements came from prompt edits, not code changes:
 
-- Architect over-creating files -> prompt: "Do NOT create .py files. Trust your team."
+- Architect over-creating files -> prompt: "focus on design rather than implementation files"
 - Agents not disagreeing -> prompt: "Make your case with a concrete alternative."
-- Missing perspectives -> prompt: "Reflect: what expertise is the team missing?"
+- Missing perspectives -> prompt: "you can recruit a specialist"
 - Facilitator overstepping -> removed the directive file entirely
-- Agents passively accepting in planning -> devil's advocate prompt in round 2
 - Recruited agents blindly following instructions -> "you own your domain, push back"
+
+Later iteration: removed prescriptive elements that were suppressing emergence. Per-round planning scripts (devil's advocate in round 2, converge in round 3) and the elaborate gap-detection algorithm (3-option decision tree) were replaced with simpler guidance. Agents naturally challenge, converge, and recruit without being scripted to.
 
 Code changes were needed for infrastructure (streaming, sandboxing, archival, module split, agent configs) but not for agent behavior.
 
@@ -31,9 +32,7 @@ The original monolithic `orchestrator.py` became hard to iterate on. Splitting i
 
 Without explicit permission to disagree, agents silently accepted every proposal. Adding "The team's first idea isn't always the best one. Disagree constructively." to the ground rules produced immediate results -- agents started flagging real conflicts.
 
-The devil's advocate prompt in planning round 2 ("Challenge the current plan: what's the weakest technical decision so far?") pushes agents past their tendency to converge too early.
-
-This is a fundamental property of LLM-based agents and must be designed around.
+This is a fundamental property of LLM-based agents and must be designed around. The ground rules include explicit permission to disagree, which is sufficient — per-round scripts like "devil's advocate in round 2" were removed as overly prescriptive.
 
 ## The Facilitator Trap
 
