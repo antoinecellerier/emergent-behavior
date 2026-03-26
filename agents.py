@@ -399,9 +399,10 @@ def run_agent(workspace: Path, logs_dir: Path, settings_file: Path,
         tag = f"round_{round_num:02d}"
         label = f"Round {round_num}"
 
-    (logs_dir / f"{tag}_{agent.lower()}.md").write_text(
+    safe_name = agent.lower().replace("/", "-").replace(" ", " ")
+    (logs_dir / f"{tag}_{safe_name}.md").write_text(
         f"# {agent} — {label}\n\n{output}\n")
-    (logs_dir / f"{tag}_{agent.lower()}.jsonl").write_text(
+    (logs_dir / f"{tag}_{safe_name}.jsonl").write_text(
         "\n".join(raw_events) + "\n")
 
     # Message board and git commit
