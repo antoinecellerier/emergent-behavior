@@ -16,7 +16,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 
-from prompts import AGENTS, AGENT_CONFIGS
+from prompts import load_agent_configs, list_configs
 from agents import (
     log, git, git_commit, run_agent, run_facilitator,
     check_for_new_agents, check_for_retirements, detect_resume_state,
@@ -98,8 +98,10 @@ def main():
                         help="Number of rounds to run (default: 3)")
     parser.add_argument("--resume", type=str, metavar="RUN_DIR",
                         help="Resume a previous run (directory name under runs/)")
-    parser.add_argument("--agents", nargs="+", choices=AGENTS, default=AGENTS,
-                        help="Which agents to include")
+    parser.add_argument("--config", type=str, default="default",
+                        help="Agent roster config from agents/ (default: default)")
+    parser.add_argument("--list-configs", action="store_true",
+                        help="List available agent configurations and exit")
     parser.add_argument("--no-facilitator", action="store_true",
                         help="Disable the Facilitator meta-agent")
     parser.add_argument("--planning-rounds", type=int, default=3,
@@ -107,6 +109,14 @@ def main():
     parser.add_argument("--facilitator-every", type=int, default=1,
                         help="Run Facilitator every N rounds (default: 1)")
     args = parser.parse_args()
+
+    if args.list_configs:
+        log(f"{BOLD}Available agent configurations:{RESET}")
+        for name, desc in list_configs():
+            log(f"  {name:20s} {desc}")
+        sys.exit(0)
+
+    agent_configs = load_agent_configs(args.config)
 
     # --- Run directory ---
     RUNS_DIR.mkdir(exist_ok=True)
@@ -124,7 +134,7 @@ def main():
 
     workspace = run_dir / "workspace"
     logs_dir  = run_dir / "logs"
-    active_agents = list(args.agents)
+    active_agents = list(agent_configs.keys())
     use_facilitator = not args.no_facilitator
 
     settings_file = setup(workspace, logs_dir, resume)
@@ -167,7 +177,7 @@ def main():
 
                 for agent in active_agents:
                     run_agent(workspace, logs_dir, settings_file,
-                              agent, 0, end_round,
+                              agent, agent_configs, 0, end_round,
                               planning=True, plan_round=plan_round,
                               plan_total=args.planning_rounds)
                     if _shutdown_requested:
@@ -198,7 +208,7 @@ def main():
 
                 for agent in agents_this_round:
                     run_agent(workspace, logs_dir, settings_file,
-                              agent, round_num, end_round)
+                              agent, agent_configs, round_num, end_round)
                     if _shutdown_requested:
                         break
 
@@ -210,7 +220,7 @@ def main():
                 if use_facilitator and round_num % args.facilitator_every == 0:
                     run_facilitator(workspace, logs_dir, settings_file,
                                     round_num, end_round, active_agents)
-                    active_agents = check_for_new_agents(workspace, active_agents)
+                    active_agents = check_for_new_agents(workspace, agent_configs, active_agents)
                     active_agents = check_for_retirements(workspace, active_agents)
 
         if _shutdown_requested:

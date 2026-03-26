@@ -1,8 +1,53 @@
 """
 Agent and Facilitator prompts.
 
-This is the most frequently edited file — prompt tweaks drive behavior changes.
+Agent rosters are loaded from JSON files in agents/.
+This file contains the shared context, facilitator prompt, and loader.
 """
+
+import json
+from pathlib import Path
+
+AGENTS_DIR = Path(__file__).parent / "agents"
+
+# Tools no experiment agent should ever use
+ALWAYS_BLOCKED = ["NotebookEdit", "WebFetch", "WebSearch"]
+
+
+def load_agent_configs(config_name: str = "default") -> dict:
+    """Load agent configs from agents/<config_name>.json.
+
+    Returns dict of {name: {model, effort, disallowed_tools, role_prompt}}.
+    """
+    config_path = AGENTS_DIR / f"{config_name}.json"
+    if not config_path.exists():
+        available = [f.stem for f in AGENTS_DIR.glob("*.json")]
+        raise FileNotFoundError(
+            f"Agent config '{config_name}' not found. "
+            f"Available: {', '.join(sorted(available))}"
+        )
+    data = json.loads(config_path.read_text())
+    configs = data.get("agents", {})
+    # Ensure all required fields have defaults
+    for name, cfg in configs.items():
+        cfg.setdefault("model", "sonnet")
+        cfg.setdefault("effort", "medium")
+        cfg.setdefault("disallowed_tools", [])
+    return configs
+
+
+def list_configs() -> list[tuple[str, str]]:
+    """Return list of (name, description) for available agent configs."""
+    result = []
+    for f in sorted(AGENTS_DIR.glob("*.json")):
+        try:
+            data = json.loads(f.read_text())
+            desc = data.get("description", "(no description)")
+            result.append((f.stem, desc))
+        except (json.JSONDecodeError, KeyError):
+            result.append((f.stem, "(invalid config)"))
+    return result
+
 
 SHARED_CONTEXT = """\
 You are part of a team of AI agents collaboratively building a 3D first-person \
@@ -18,10 +63,7 @@ Build a playable FPS game in Python that:
 - Should be playable by users with different keyboard layouts and setups
 
 ## Your Team
-- **Architect** — designs overall structure, makes technical decisions, writes specs
-- **Engine** — implements 3D rendering, terminal output, performance
-- **Gameplay** — implements controls, enemies, items, game loop, levels
-- **Reviewer** — reviews code, tests the game, reports bugs, fixes small issues
+{team_description}
 
 ## How You Communicate
 Read these in order — recent messages are your primary source of truth:
@@ -58,107 +100,25 @@ Never flag a gap without taking one of these actions. Repeating an \
 observation from a previous round without acting on it is not useful.\
 """
 
-# Tools no experiment agent should ever use
-ALWAYS_BLOCKED = ["NotebookEdit", "WebFetch", "WebSearch"]
 
-AGENT_CONFIGS = {
-    "Architect": {
-        "model": "sonnet",
-        "effort": "medium",
-        "disallowed_tools": ["Bash"],
-        "role_prompt": """\
-You are the **Architect**.
+def build_shared_context(agent_configs: dict) -> str:
+    """Build the shared context with the current team roster."""
+    team_lines = []
+    for name, cfg in agent_configs.items():
+        # Extract first sentence of role_prompt as description
+        first_line = cfg["role_prompt"].split("\n")[0].strip()
+        # Clean up markdown bold
+        first_line = first_line.replace("**", "").replace("You are the ", "").rstrip(".")
+        team_lines.append(f"- **{name}** — {first_line}")
+    team_description = "\n".join(team_lines)
+    return SHARED_CONTEXT.format(team_description=team_description)
 
-Priorities:
-- Write ARCHITECTURE.md describing the project structure, module responsibilities, \
-and key design decisions (3D rendering approach, input handling, etc.).
-- Define interfaces and contracts between engine and gameplay code — describe \
-function signatures, data structures, and module boundaries in the architecture doc.
-- As the project matures, review the overall design and propose improvements.
-
-IMPORTANT: Do NOT create implementation files or skeleton code. Your teammates \
-will write their own code based on your architecture doc. Your deliverable is \
-ARCHITECTURE.md (and updates to it), not .py files. Trust your team.
-
-If the architecture is settled and no teammate raised issues on the message \
-board, keep your turn short: say "Architecture is stable, no changes needed" \
-and move on. Do not re-read or re-edit a document that doesn't need updating.\
-""",
-    },
-
-    "Engine": {
-        "model": "sonnet",
-        "effort": "medium",
-        "disallowed_tools": [],
-        "role_prompt": """\
-You are the **Engine Developer**.
-
-Priorities:
-- Implement the 3D rendering pipeline for the terminal.
-- Handle terminal output efficiently.
-- Implement the camera and viewport system.
-- Handle input without blocking.
-- Optimise rendering so the game feels responsive.
-
-Write performant Python. Choose the best tools and libraries available.
-
-If no teammate raised issues with your code and you have nothing to add, \
-keep your turn short and move on. Don't re-read or re-edit stable code.\
-""",
-    },
-
-    "Gameplay": {
-        "model": "sonnet",
-        "effort": "medium",
-        "disallowed_tools": [],
-        "role_prompt": """\
-You are the **Gameplay Developer**.
-
-Priorities:
-- Implement player movement, rotation, and collision detection.
-- Create enemy types with simple AI (chase, patrol, etc.).
-- Design and implement at least one map/level (can be a 2-D grid).
-- Wire up the game loop: input → update → render cycle.
-- Add weapons, health, scoring, and win/lose conditions.
-
-Build on top of the engine — use the interfaces provided by the Engine dev.
-
-If no teammate raised issues with your code and you have nothing to add, \
-keep your turn short and move on. Don't re-read or re-edit stable code.\
-""",
-    },
-
-    "Reviewer": {
-        "model": "sonnet",
-        "effort": "medium",
-        "disallowed_tools": [],
-        "role_prompt": """\
-You are the **Reviewer / QA**.
-
-Priorities:
-- Read through the codebase and check for bugs or integration issues.
-- Try to run the game and verify it works.
-- Fix small bugs you find — but always note them on the message board.
-- Suggest concrete, actionable improvements with code snippets.
-- Ensure the code stays consistent and well-organised.
-- Identify missing perspectives: are there concerns the team isn't \
-thinking about? (accessibility, terminal compatibility, usability, \
-error handling, input methods, color-blind users, small terminals, etc.) \
-If so, flag them and suggest whether the team needs a specialist.
-
-Be constructive and specific. Prefer fixing over just reporting. \
-Challenge decisions that seem suboptimal — don't just accept the status quo.\
-""",
-    },
-}
-
-AGENTS = list(AGENT_CONFIGS.keys())
 
 FACILITATOR_SYSTEM = """\
 You are the **Facilitator** — you summarize team discussions and handle \
 agent roster changes. You do NOT direct, manage, or advise the team.
 
-Agents take turns sequentially each round: Architect → Engine → Gameplay → Reviewer. \
+Agents take turns sequentially each round. \
 A question asked earlier in the same round is NOT unanswered — the other agent \
 hasn't had their turn yet.
 

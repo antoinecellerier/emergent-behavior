@@ -8,7 +8,7 @@ import time
 import json
 from pathlib import Path
 
-from prompts import SHARED_CONTEXT, AGENT_CONFIGS, ALWAYS_BLOCKED, FACILITATOR_SYSTEM
+from prompts import ALWAYS_BLOCKED, FACILITATOR_SYSTEM, build_shared_context
 
 
 # ---------------------------------------------------------------------------
@@ -254,17 +254,17 @@ def run_claude(workspace: Path, settings_file: Path,
 # ---------------------------------------------------------------------------
 
 def run_agent(workspace: Path, logs_dir: Path, settings_file: Path,
-              agent: str, round_num: int, num_rounds: int, *,
+              agent: str, agent_configs: dict, round_num: int, num_rounds: int, *,
               planning: bool = False, plan_round: int = 0, plan_total: int = 0) -> str:
     """Run a single agent turn. Returns the agent's text output."""
-    cfg              = AGENT_CONFIGS.get(agent, {})
+    cfg              = agent_configs.get(agent, {})
     model            = cfg.get("model", "sonnet")
     effort           = cfg.get("effort", "medium")
     disallowed_tools = list(set(ALWAYS_BLOCKED) | set(cfg.get("disallowed_tools", [])))
     if planning:
         disallowed_tools = list(set(disallowed_tools) | {"Bash", "Write", "Edit"})
 
-    system = SHARED_CONTEXT + "\n\n" + cfg.get("role_prompt", "")
+    system = build_shared_context(agent_configs) + "\n\n" + cfg.get("role_prompt", "")
     prompt = build_prompt(workspace, agent, round_num, num_rounds,
                           planning=planning, plan_round=plan_round, plan_total=plan_total)
     color  = COLORS.get(agent, "")
@@ -367,7 +367,8 @@ def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
 # Dynamic agent management
 # ---------------------------------------------------------------------------
 
-def check_for_new_agents(workspace: Path, active_agents: list[str]) -> list[str]:
+def check_for_new_agents(workspace: Path, agent_configs: dict,
+                          active_agents: list[str]) -> list[str]:
     """Check if the Facilitator requested a new agent via NEW_AGENT.json."""
     new_agent_file = workspace / "NEW_AGENT.json"
     if not new_agent_file.exists():
@@ -378,8 +379,8 @@ def check_for_new_agents(workspace: Path, active_agents: list[str]) -> list[str]
         name = data["name"]
         role_prompt = data["role_prompt"]
 
-        if name not in AGENT_CONFIGS:
-            AGENT_CONFIGS[name] = {
+        if name not in agent_configs:
+            agent_configs[name] = {
                 "model": "sonnet",
                 "effort": "medium",
                 "disallowed_tools": [],
