@@ -124,10 +124,17 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
     is_first_turn = "first turn" in diff
 
     if planning:
-        if plan_round == 1 or is_first_turn:
+        if plan_round == 1:
             phase = (
                 f"This is planning round {plan_round} of {plan_total}. "
                 "Propose ideas, react to teammates' proposals, flag disagreements."
+            )
+        elif is_first_turn:
+            phase = (
+                f"This is planning round {plan_round} of {plan_total}. "
+                "You just joined the team. Read the discussion so far with fresh eyes. "
+                "React to the plan, flag anything that concerns you, and consider "
+                "whether the team has the right people to pull this off."
             )
         elif plan_round < plan_total:
             phase = (
