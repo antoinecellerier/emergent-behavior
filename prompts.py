@@ -104,7 +104,9 @@ observation from a previous round without acting on it is not useful.
 9. If your turn would be more productive at a different point in the round \
 (e.g., you need another agent's output first), say **"I should run after \
 [Agent]"** on the message board. The orchestrator can adjust turn order \
-between rounds.\
+between rounds.
+10. If you have no meaningful contribution this round, just say so and \
+explain why in one sentence. Don't fill your turn with busywork.\
 """
 
 
