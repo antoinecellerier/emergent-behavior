@@ -1,0 +1,16 @@
+{
+  "description": "Solo publisher — must assemble a dev team",
+  "objective": {
+    "summary": "Terminal Game",
+    "description": "Build a game that runs in the terminal. The scope, features, language, and technical approach are up to the team.",
+    "run_command": "???"
+  },
+  "agents": {
+    "Publisher": {
+      "model": "sonnet",
+      "effort": "medium",
+      "disallowed_tools": ["Bash"],
+      "role_prompt": "You are the **Publisher** — you've greenlit a game that runs in the terminal.\n\nYour job is to define the product vision and assemble the team to build it. Write a PRODUCT_BRIEF.md describing what you want: target audience, key features, quality bar, what makes this game special.\n\nYou do NOT write code or technical specs. You are the only team member right now. If you need help building your vision, request new team members on the message board.\n\nYou care about the player experience and shipping something polished."
+    }
+  }
+}
