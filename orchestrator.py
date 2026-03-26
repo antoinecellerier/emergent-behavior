@@ -90,7 +90,10 @@ def _write_claude_md_excludes(workspace: Path) -> None:
 
     # Merge with existing settings if present
     if settings_local.exists():
-        existing = json.loads(settings_local.read_text())
+        try:
+            existing = json.loads(settings_local.read_text())
+        except json.JSONDecodeError:
+            existing = {}
     else:
         existing = {}
     existing["claudeMdExcludes"] = excludes
@@ -164,7 +167,7 @@ def main():
         resume = True
     else:
         run_dir = RUNS_DIR / datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_dir.mkdir()
+        run_dir.mkdir(exist_ok=False)
         resume = False
 
     workspace = run_dir / "workspace"
@@ -281,9 +284,11 @@ def main():
 
     except RateLimitError as e:
         log(f"\n{BOLD}Experiment paused — rate limit hit.{RESET}")
-        log(f"{DIM}Resume when limit resets: python3 orchestrator.py --resume {run_dir.name} --rounds {end_round - round_num}{RESET}")
+        log(f"{DIM}Resume: python3 orchestrator.py --resume {run_dir.name} --rounds {args.rounds}{RESET}")
     except Exception as e:
+        import traceback
         log(f"\n{BOLD}Experiment error: {e}{RESET}")
+        traceback.print_exc()
 
     log(f"""
 {BOLD}Experiment complete.{RESET}

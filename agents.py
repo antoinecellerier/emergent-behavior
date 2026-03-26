@@ -3,6 +3,7 @@ Agent runner: invoke claude -p, stream events, capture results.
 """
 
 import subprocess
+import select
 import os
 import time
 import json
@@ -290,7 +291,18 @@ def run_claude(workspace: Path, settings_file: Path,
         proc.stdin.write(prompt)
         proc.stdin.close()
 
+        deadline = time.time() + timeout
         while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(cmd, timeout)
+            # Poll stdout with timeout to avoid blocking forever
+            ready = select.select([proc.stdout], [], [], min(remaining, 30))
+            if not ready[0]:
+                # No data yet — check if process is still alive
+                if proc.poll() is not None:
+                    break
+                continue
             line = proc.stdout.readline()
             if not line:
                 break
@@ -323,7 +335,7 @@ def run_claude(workspace: Path, settings_file: Path,
                 elif subtype and subtype != "success":
                     log(f"{DIM}    (stop: {subtype}){RESET}")
 
-        proc.wait(timeout=timeout)
+        proc.wait(timeout=30)
 
         if not result_text and text_chunks:
             result_text = "".join(text_chunks)
@@ -340,7 +352,9 @@ def run_claude(workspace: Path, settings_file: Path,
 
     except subprocess.TimeoutExpired:
         proc.kill()
-        result_text = "(agent timed out)"
+        proc.wait(timeout=10)
+        stderr = (proc.stderr.read() or "")[:2000].strip()
+        result_text = f"(agent timed out)\n{stderr}".strip()
     except KeyboardInterrupt:
         # Ctrl-C during readline — wait for the agent to finish naturally
         log(f"{DIM}    (waiting for agent to finish...){RESET}")
@@ -348,9 +362,13 @@ def run_claude(workspace: Path, settings_file: Path,
             proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(timeout=10)
         if not result_text and text_chunks:
             result_text = "".join(text_chunks)
     except Exception as e:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=10)
         result_text = f"(error: {e})"
 
     elapsed = time.time() - start

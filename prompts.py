@@ -114,8 +114,10 @@ def build_shared_context(agent_configs: dict) -> str:
     for name, cfg in agent_configs.items():
         # Extract first sentence of role_prompt as description
         first_line = cfg["role_prompt"].split("\n")[0].strip()
-        # Clean up markdown bold
-        first_line = first_line.replace("**", "").replace("You are the ", "").rstrip(".")
+        # Clean up leading markdown bold marker and "You are the" prefix
+        import re
+        first_line = re.sub(r'^\*\*(.+?)\*\*', r'\1', first_line)
+        first_line = first_line.replace("You are the ", "").rstrip(".")
         team_lines.append(f"- **{name}** — {first_line}")
     team_description = "\n".join(team_lines)
     return SHARED_CONTEXT.format(team_description=team_description)

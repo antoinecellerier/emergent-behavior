@@ -33,6 +33,9 @@ def archive_message_board(workspace: Path, *,
     Messages older than the keep threshold are moved to the archive.
     Returns (archived_count, kept_count) or None if nothing to do.
     """
+    assert not (keep_round is not None and keep_plan is not None), \
+        "pass keep_round or keep_plan, not both"
+
     board = workspace / "MESSAGE_BOARD.md"
     archive = workspace / "MESSAGE_BOARD_ARCHIVE.md"
 
