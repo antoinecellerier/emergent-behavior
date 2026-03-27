@@ -164,8 +164,8 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
             "IMPLEMENTATION — this is a building round.\n"
             "Start by reading MESSAGE_BOARD.md and relevant source files, "
             "then make your contribution. Read files before modifying them. "
-            "Choose an approach and commit to it rather than deliberating "
-            "between alternatives."
+            "If you have a new idea or spot a better approach while working, "
+            "note it on the message board — but finish your current task first."
         )
 
     if planning:
