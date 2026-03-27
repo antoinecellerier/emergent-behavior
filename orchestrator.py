@@ -28,7 +28,7 @@ from agents import (
     collect_facilitator_files,
     check_for_new_agents, check_for_retirements, check_for_reorder,
     detect_resume_state, save_roster, load_roster,
-    RateLimitError, APIError, BOLD, RESET, DIM,
+    RateLimitError, APIError, AgentTimeoutError, BOLD, RESET, DIM,
 )
 from board import init_board
 
@@ -294,10 +294,13 @@ def main():
         log(f"\n{BOLD}Experiment paused — rate limit hit.{RESET}")
         log(f"{DIM}Resume: python3 orchestrator.py --resume {run_dir.name} --rounds {args.rounds}{RESET}")
     except APIError as e:
-        log(f"\n{BOLD}Experiment aborted — Claude API error (retries exhausted).{RESET}")
+        log(f"\n{BOLD}Experiment paused — Claude API error (retries exhausted).{RESET}")
         log(f"{DIM}{e}{RESET}")
         log(f"{DIM}Check https://status.anthropic.com/ then resume:")
         log(f"  python3 orchestrator.py --resume {run_dir.name} --rounds {args.rounds}{RESET}")
+    except AgentTimeoutError as e:
+        log(f"\n{BOLD}Experiment paused — agent timed out ({e}).{RESET}")
+        log(f"{DIM}Resume: python3 orchestrator.py --resume {run_dir.name} --rounds {args.rounds}{RESET}")
     except Exception as e:
         import traceback
         log(f"\n{BOLD}Experiment error: {e}{RESET}")

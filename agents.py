@@ -22,6 +22,11 @@ class APIError(Exception):
     pass
 
 
+class AgentTimeoutError(Exception):
+    """Raised when an agent times out (idle or wall-clock)."""
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Terminal colors
 # ---------------------------------------------------------------------------
@@ -366,8 +371,7 @@ def run_claude(workspace: Path, settings_file: Path,
         proc.kill()
         proc.wait(timeout=10)
         hint = str(te.stderr) if te.stderr else "wall-clock timeout"
-        stderr = (proc.stderr.read() or "")[:2000].strip()
-        result_text = f"(agent timed out — {hint})\n{stderr}".strip()
+        raise AgentTimeoutError(hint)
     except KeyboardInterrupt:
         # Ctrl-C during readline — wait for the agent to finish naturally
         log(f"{DIM}    (waiting for agent to finish...){RESET}")
