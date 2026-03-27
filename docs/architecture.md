@@ -62,13 +62,38 @@ Select with `--config <name>` or list with `--list-configs`.
 
 Each agent turn is a single `claude -p` invocation:
 
-1. Orchestrator builds a prompt with workspace state (file tree, git log, diff since agent's last turn)
-2. Prompt is piped via stdin to `claude -p` (avoids CLI arg length limits)
+1. Orchestrator builds two prompts (see structure below)
+2. System prompt passed via `--system-prompt`; user prompt piped via stdin
 3. Agent reads files, writes code, and produces a text summary
 4. Orchestrator captures the summary from the stream-json `result` event
 5. Summary is appended to `MESSAGE_BOARD.md`
 6. All workspace changes are committed to git: `[Agent] RN: first line of summary`
 7. Next agent's turn begins
+
+### Prompt structure
+
+```
+SYSTEM PROMPT (--system-prompt flag)
+├── SHARED_CONTEXT          ← identical for all agents in a round
+│   ├── Project objective
+│   ├── Team roster (names + descriptions)
+│   ├── Communication rules
+│   └── Ground rules
+└── ROLE_PROMPT             ← unique per agent
+
+USER PROMPT (piped via stdin)
+├── Stable prefix           ← identical for all agents in a phase
+│   ├── Status line (round/phase numbers)
+│   ├── Action block (PLANNING or IMPLEMENTATION instructions)
+│   └── Working directory note + focus/summary instructions
+├── ---
+└── Volatile suffix         ← unique per agent, changes every turn
+    ├── Workspace file tree
+    ├── Recent git history (last 15 commits)
+    └── Changes since this agent's last turn
+```
+
+Stable content is ordered before volatile content to maximize Claude's automatic prompt cache hit rate across sequential agent turns within the same phase. The Facilitator uses a separate system prompt (`FACILITATOR_SYSTEM`) and does not share cache with regular agents.
 
 ## Communication Model
 
