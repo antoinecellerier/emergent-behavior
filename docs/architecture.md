@@ -63,7 +63,7 @@ Select with `--config <name>` or list with `--list-configs`.
 Each agent turn is a single `claude -p` invocation:
 
 1. Orchestrator builds two prompts (see structure below)
-2. System prompt passed via `--system-prompt`; user prompt piped via stdin
+2. System prompt appended via `--append-system-prompt` (preserves Claude Code's default); user prompt piped via stdin
 3. Agent reads files, writes code, and produces a text summary
 4. Orchestrator captures the summary from the stream-json `result` event
 5. Summary is appended to `MESSAGE_BOARD.md`
@@ -73,7 +73,7 @@ Each agent turn is a single `claude -p` invocation:
 ### Prompt structure
 
 ```
-SYSTEM PROMPT (--system-prompt flag)
+SYSTEM PROMPT (--append-system-prompt, after Claude Code's default)
 ├── SHARED_CONTEXT          ← identical for all agents in a round
 │   ├── <project>           objective description
 │   ├── <team>              roster + role ownership note
@@ -205,6 +205,7 @@ Claude CLI flags used per agent invocation:
 
 | Flag | Purpose |
 |------|---------|
+| `--append-system-prompt` | Appends shared context + role prompt after Claude Code's default system prompt |
 | `--permission-mode bypassPermissions` | No interactive prompts, respects sandbox |
 | `--disallowedTools X,Y,Z` | Blocks specific tools (works with bypassPermissions) |
 | `--output-format stream-json` | Real-time event streaming (requires `--verbose`) |
