@@ -211,8 +211,12 @@ def _fmt_tokens(n: int) -> str:
     return str(n)
 
 
-def _usage_suffix(usage: dict) -> str:
-    """Format a compact usage string from an assistant message's usage dict."""
+def _usage_suffix(usage: dict, include_output: bool = True) -> str:
+    """Format a compact usage string from a usage dict.
+
+    include_output: if False, omit output tokens (useful for per-tool lines
+    where output_tokens excludes thinking and is misleading).
+    """
     if not usage:
         return ""
     inp = usage.get("input_tokens", 0)
@@ -223,7 +227,9 @@ def _usage_suffix(usage: dict) -> str:
     if total_in == 0 and out == 0:
         return ""
     cache_pct = int(cached * 100 / total_in) if total_in else 0
-    return f" [{_fmt_tokens(total_in)} in · {cache_pct}% cache · {_fmt_tokens(out)} out]"
+    if include_output:
+        return f" [{_fmt_tokens(total_in)} in · {cache_pct}% cache · {_fmt_tokens(out)} out]"
+    return f" [{_fmt_tokens(total_in)} in · {cache_pct}% cache]"
 
 
 def _tool_hint(tool_name: str, tool_input: dict) -> str:
@@ -365,7 +371,7 @@ def run_claude(workspace: Path, settings_file: Path,
 
             if etype == "assistant" and "message" in event:
                 msg_usage = event["message"].get("usage", {})
-                usage_tag = _usage_suffix(msg_usage)
+                usage_tag = _usage_suffix(msg_usage, include_output=False)
                 for block in event["message"].get("content", []):
                     btype = block.get("type", "")
                     if btype == "tool_use":
