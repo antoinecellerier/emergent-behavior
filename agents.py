@@ -170,18 +170,20 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
 
     return (
         f"{status_line}\n\n"
-        f"{action}\n\n"
+        f"<instructions>\n{action}\n\n"
         f"Your working directory is already set to the project workspace. "
         f"Use relative paths (e.g. `MESSAGE_BOARD.md`, not `/root/MESSAGE_BOARD.md`).\n"
-        f"Focus on what changed — don't re-read files that haven't been modified.\n\n"
-        f"---\n\n"
-        f"### Workspace files\n{tree}\n\n"
-        f"### Recent git history\n{gitlog}\n\n"
-        f"### Changes since your last turn\n{diff}\n\n"
-        f"---\n\n"
-        f"{action}\n\n"
+        f"Focus on what changed — don't re-read files that haven't been modified.\n"
+        f"</instructions>\n\n"
+        f"<context>\n"
+        f"<workspace_files>\n{tree}\n</workspace_files>\n\n"
+        f"<git_history>\n{gitlog}\n</git_history>\n\n"
+        f"<changes_since_last_turn>\n{diff}\n</changes_since_last_turn>\n"
+        f"</context>\n\n"
+        f"<instructions>\n{action}\n\n"
         f"When finished, write a summary for teammates. Start with a single "
-        f"headline sentence (this becomes the git commit message), then details."
+        f"headline sentence (this becomes the git commit message), then details.\n"
+        f"</instructions>"
     )
 
 

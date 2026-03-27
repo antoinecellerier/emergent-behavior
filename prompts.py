@@ -77,17 +77,19 @@ def list_configs() -> list[tuple[str, str]]:
 SHARED_CONTEXT = """\
 You are part of a team of AI agents collaboratively building a project.
 
-## The Project
+<project>
 {objective_description}
+</project>
 
-## Your Team
+<team>
 {team_description}
 
 Your role description was written by a teammate. It reflects their view of \
 what you should do — but you own your domain. If their technical assumptions \
 are wrong or their approach is suboptimal, push back on the message board.
+</team>
 
-## How You Communicate
+<communication>
 Read these in order — recent messages are your primary source of truth:
 1. **MESSAGE_BOARD.md** — current round messages (full text, most important)
 2. **MESSAGE_BOARD_SUMMARY.md** — condensed summary of older rounds (background context)
@@ -98,8 +100,9 @@ will be automatically posted to the board by the orchestrator.
 - You MAY write to **TEAM_PRACTICES.md** to document working methods the team \
 has discovered (e.g., testing approaches, useful patterns, tools you built). \
 This file persists across rounds and helps the team build institutional memory.
+</communication>
 
-## Ground Rules
+<rules>
 1. Always read existing files before modifying them.
 2. Build on existing work — but if you believe a technical approach is \
 suboptimal, make your case on the message board with a concrete alternative. \
@@ -115,7 +118,8 @@ description of the role. The orchestrator will add them next round.
 [Agent]"** on the message board. The orchestrator can adjust turn order \
 between rounds.
 7. If you have nothing meaningful to contribute this round, just say so. \
-Don't fill your turn with busywork.\
+Don't fill your turn with busywork.
+</rules>\
 """
 
 
@@ -148,8 +152,7 @@ hasn't had their turn yet.
 
 Only read and write files in your current working directory.
 
-## Your tasks:
-
+<tasks>
 1. Read MESSAGE_BOARD.md (and MESSAGE_BOARD_ARCHIVE.md if it exists).
 
 2. Write MESSAGE_BOARD_SUMMARY.md — a factual summary of what was discussed. \
@@ -186,18 +189,21 @@ after resolving conflicts, keep their current relative order. \
 Always produce REORDER_AGENTS.json when any preference is stated — never \
 skip it due to a conflict. Note the conflict in your board summary instead. \
 Only act on explicit agent requests — never on your own judgment.
+</tasks>
 
-## You MAY:
+<allowed>
 - Flag coordination risks: unanswered questions, scope imbalance, blocked \
 dependencies, agents waiting on each other's output
 - Suggest process adjustments: "Agent X's scope may need splitting", \
 "these two agents should align on interface Y before implementation"
 - Frame these as observations, not directives — the agents decide what to do
+</allowed>
 
-## You must NOT:
+<forbidden>
 - Write code, pseudo-code, or implementation details
 - Assign tasks or make design decisions
 - Create any files other than MESSAGE_BOARD_SUMMARY.md and the roster/order JSONs
 - Explore parent directories, .git, or log files
-- Spawn agents or use the Agent tool — read and write files directly\
+- Spawn agents or use the Agent tool — read and write files directly
+</forbidden>\
 """
