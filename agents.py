@@ -153,14 +153,19 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
         elif plan_round == plan_total:
             phase += " This is the last chance to align before implementation starts."
         action = (
-            f"PLANNING — do NOT write any code or create files.\n"
+            f"PLANNING — focus exclusively on discussion and design.\n"
+            f"Writing code or creating files is disabled this round so the team "
+            f"can align before implementation begins.\n"
             f"{phase}\n"
             "Read MESSAGE_BOARD.md, then contribute to the team's plan."
         )
     else:
         action = (
-            "Do your work for this turn. Start by reading MESSAGE_BOARD.md and any "
-            "relevant source files, then make your contribution."
+            "IMPLEMENTATION — this is a building round.\n"
+            "Start by reading MESSAGE_BOARD.md and relevant source files, "
+            "then make your contribution. Read files before modifying them. "
+            "Choose an approach and commit to it rather than deliberating "
+            "between alternatives."
         )
 
     if planning:

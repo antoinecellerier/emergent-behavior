@@ -51,6 +51,18 @@ Agents can request new team members by saying "We need a [Role] agent" on the me
 
 Agents can self-organize their execution order. The Facilitator picks up these requests and writes `REORDER_AGENTS.json`.
 
+### Rule 8 -- No Sub-Agents
+
+> "Work directly — do not spawn sub-agents (the Agent tool) for tasks you can do yourself with Read, Grep, Glob, or Bash."
+
+Run 20260327_001014 showed the Lead Engine Developer spawning 3 sub-agents during implementation, then timing out before any completed. Sub-agent spawning correlates with timeouts because each sub-agent adds latency and the parent waits. This rule steers agents toward direct tool use. The exception (genuine parallelism across independent workstreams) is noted but rare in practice.
+
+### Rule 9 -- Parallel Tool Calls
+
+> "When reading multiple files, make all Read calls in parallel rather than sequentially."
+
+Per Anthropic's prompting docs, Claude can batch independent tool calls but benefits from explicit encouragement to do so. This reduces wall-clock time per agent turn.
+
 ### TEAM_PRACTICES.md -- Institutional Memory
 
 Agents may write to `TEAM_PRACTICES.md` to document working methods the team discovers (testing approaches, useful patterns, tools built). This file persists across rounds and helps the team accumulate knowledge.
@@ -77,7 +89,7 @@ The Facilitator is also told that agents take turns sequentially, so a question 
 
 ## Planning Rounds
 
-Configurable planning rounds (default 3) before implementation, with Write/Edit/Bash blocked. The prompt is minimal — agents are told the round number and asked to "contribute to the team's plan." What they discuss is up to them.
+Configurable planning rounds (default 3) before implementation, with Write/Edit/Bash blocked. The prompt tells agents to "focus exclusively on discussion and design" and explains why writing tools are disabled ("so the team can align before implementation begins"). What they discuss is up to them.
 
 Earlier versions scripted each round's theme (round 1: propose, round 2: devil's advocate, round 3: converge). This was removed as overly prescriptive — agents naturally challenge ideas, converge, and assign work without being told to. The only special cases: newly recruited agents joining mid-planning are told "you just joined — read with fresh eyes," and the final round notes "last chance to align before implementation."
 

@@ -103,7 +103,8 @@ This file persists across rounds and helps the team build institutional memory.
 </communication>
 
 <rules>
-1. Always read existing files before modifying them.
+1. Always read existing files before modifying them. Never speculate about \
+code you have not opened — read first, then act.
 2. Build on existing work — but if you believe a technical approach is \
 suboptimal, make your case on the message board with a concrete alternative. \
 The team's first idea isn't always the best one. Disagree constructively.
@@ -119,6 +120,11 @@ description of the role. The orchestrator will add them next round.
 between rounds.
 7. If you have nothing meaningful to contribute this round, just say so. \
 Don't fill your turn with busywork.
+8. Work directly — do not spawn sub-agents (the Agent tool) for tasks you can \
+do yourself with Read, Grep, Glob, or Bash. Sub-agents are expensive and slow; \
+use them only when you need genuine parallelism across independent workstreams.
+9. When reading multiple files, make all Read calls in parallel rather than \
+sequentially. Similarly, batch independent Bash commands together.
 </rules>\
 """
 
