@@ -266,7 +266,7 @@ def run_claude(workspace: Path, settings_file: Path,
     cmd = [
         "claude",
         "-p",
-        "--system-prompt", system_prompt,
+        "--append-system-prompt", system_prompt,
         "--model", model,
         "--effort", effort,
         "--output-format", "stream-json",
