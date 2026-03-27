@@ -290,25 +290,28 @@ def main():
         if _shutdown_requested:
             log(f"\n{BOLD}Experiment stopped after current agent finished.{RESET}")
 
+        status = "complete"
     except RateLimitError as e:
+        status = "paused"
         log(f"\n{BOLD}Experiment paused — rate limit hit.{RESET}")
-        log(f"{DIM}Resume: python3 orchestrator.py --resume {run_dir.name} --rounds {args.rounds}{RESET}")
     except APIError as e:
+        status = "paused"
         log(f"\n{BOLD}Experiment paused — Claude API error (retries exhausted).{RESET}")
         log(f"{DIM}{e}{RESET}")
-        log(f"{DIM}Check https://status.anthropic.com/ then resume:")
-        log(f"  python3 orchestrator.py --resume {run_dir.name} --rounds {args.rounds}{RESET}")
+        log(f"{DIM}Check https://status.anthropic.com/ then resume.{RESET}")
     except AgentTimeoutError as e:
+        status = "paused"
         log(f"\n{BOLD}Experiment paused — agent timed out ({e}).{RESET}")
-        log(f"{DIM}Resume: python3 orchestrator.py --resume {run_dir.name} --rounds {args.rounds}{RESET}")
     except Exception as e:
+        status = "error"
         import traceback
         log(f"\n{BOLD}Experiment error: {e}{RESET}")
         traceback.print_exc()
 
     run_hint = f"\n  Run       : cd {workspace} && {objective['run_command']}" if objective.get("run_command") else ""
+    heading = "Experiment complete." if status == "complete" else f"Experiment {status}."
     log(f"""
-{BOLD}Experiment complete.{RESET}
+{BOLD}{heading}{RESET}
   Run       : {run_dir.name}
   Workspace : {workspace}
   Logs      : {logs_dir}
