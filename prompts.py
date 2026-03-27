@@ -177,8 +177,14 @@ write RETIRE_AGENT.json — same format: \
 If any agent stated a turn-order preference (e.g., "I should run after X", \
 "I should run first", "I run after the Lead Engineer"), write \
 REORDER_AGENTS.json: ["Agent1", "Agent2", ...] listing the full turn \
-order that satisfies ALL stated constraints. Collect preferences from every \
+order that best satisfies stated constraints. Collect preferences from every \
 agent, not just the most recent or most prominent one. \
+If constraints conflict, resolve by placing agents with blocking questions \
+or dependencies later in the order (so they run after the agent whose \
+output they need). For any agents whose relative order is still ambiguous \
+after resolving conflicts, keep their current relative order. \
+Always produce REORDER_AGENTS.json when any preference is stated — never \
+skip it due to a conflict. Note the conflict in your board summary instead. \
 Only act on explicit agent requests — never on your own judgment.
 
 ## You must NOT:
