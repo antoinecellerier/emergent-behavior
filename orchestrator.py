@@ -319,9 +319,7 @@ def main():
   Resume    : python3 orchestrator.py --resume {run_dir.name} --rounds N
 """
     log(f"{BOLD}{summary}{RESET}")
-    # Also print to stderr so it's visible even when stdout is piped and broken
-    if status != "complete":
-        print(summary, file=sys.stderr)
+    print(summary, file=sys.stderr)
 
 
 if __name__ == "__main__":
