@@ -20,7 +20,7 @@ from datetime import datetime
 
 # Prevent "Exception ignored on flushing sys.stdout: BrokenPipeError"
 # when piped through tee and tee dies on Ctrl-C
-signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 
 from prompts import load_agent_configs, load_objective, list_configs
 from agents import (
@@ -310,14 +310,18 @@ def main():
 
     run_hint = f"\n  Run       : cd {workspace} && {objective['run_command']}" if objective.get("run_command") else ""
     heading = "Experiment complete." if status == "complete" else f"Experiment {status}."
-    log(f"""
-{BOLD}{heading}{RESET}
+    summary = f"""
+{heading}
   Run       : {run_dir.name}
   Workspace : {workspace}
   Logs      : {logs_dir}
   Git log   : cd {workspace} && git log --oneline{run_hint}
   Resume    : python3 orchestrator.py --resume {run_dir.name} --rounds N
-""")
+"""
+    log(f"{BOLD}{summary}{RESET}")
+    # Also print to stderr so it's visible even when stdout is piped and broken
+    if status != "complete":
+        print(summary, file=sys.stderr)
 
 
 if __name__ == "__main__":
