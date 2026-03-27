@@ -221,7 +221,7 @@ def _usage_suffix(usage: dict) -> str:
     if total_in == 0 and out == 0:
         return ""
     cache_pct = int(cached * 100 / total_in) if total_in else 0
-    return f" [{_fmt_tokens(total_in)}in {cache_pct}%cache {_fmt_tokens(out)}out]"
+    return f" [{_fmt_tokens(total_in)} in · {cache_pct}% cache · {_fmt_tokens(out)} out]"
 
 
 def _tool_hint(tool_name: str, tool_input: dict) -> str:
