@@ -202,6 +202,28 @@ def _short_path(path: str) -> str:
     return parts[-1] if len(parts) > 1 else Path(path).name
 
 
+def _fmt_tokens(n: int) -> str:
+    """Format token count compactly: 1234 -> '1.2k', 12345 -> '12.3k'."""
+    if n >= 1000:
+        return f"{n / 1000:.1f}k"
+    return str(n)
+
+
+def _usage_suffix(usage: dict) -> str:
+    """Format a compact usage string from an assistant message's usage dict."""
+    if not usage:
+        return ""
+    inp = usage.get("input_tokens", 0)
+    cached = usage.get("cache_read_input_tokens", 0)
+    created = usage.get("cache_creation_input_tokens", 0)
+    out = usage.get("output_tokens", 0)
+    total_in = inp + cached + created
+    if total_in == 0 and out == 0:
+        return ""
+    cache_pct = int(cached * 100 / total_in) if total_in else 0
+    return f" [{_fmt_tokens(total_in)}in {cache_pct}%cache {_fmt_tokens(out)}out]"
+
+
 def _tool_hint(tool_name: str, tool_input: dict) -> str:
     """Extract a short human-readable hint from a tool invocation."""
     if tool_name == "Read":
@@ -255,10 +277,10 @@ def _tool_hint(tool_name: str, tool_input: dict) -> str:
 def run_claude(workspace: Path, settings_file: Path,
                prompt: str, system_prompt: str, model: str, effort: str,
                disallowed_tools: list[str], color: str,
-               timeout: int = 1800, idle_timeout: int = 900) -> tuple[str, float, list[str]]:
+               timeout: int = 1800, idle_timeout: int = 900) -> tuple[str, float, list[str], dict]:
     """
     Run a claude -p subprocess with stream-json output.
-    Returns (result_text, elapsed_seconds, raw_events).
+    Returns (result_text, elapsed_seconds, raw_events, usage_dict).
 
     timeout: hard wall-clock limit (default 30 min).
     idle_timeout: max seconds with no output (default 15 min).
@@ -279,6 +301,7 @@ def run_claude(workspace: Path, settings_file: Path,
 
     start = time.time()
     result_text = ""
+    result_usage: dict = {}
     text_chunks: list[str] = []
     raw_events: list[str] = []
     _hit_rate_limit = False
@@ -336,17 +359,20 @@ def run_claude(workspace: Path, settings_file: Path,
             etype = event.get("type", "")
 
             if etype == "assistant" and "message" in event:
+                msg_usage = event["message"].get("usage", {})
+                usage_tag = _usage_suffix(msg_usage)
                 for block in event["message"].get("content", []):
                     btype = block.get("type", "")
                     if btype == "tool_use":
                         tool_name = block.get("name", "?")
                         tool_hint = _tool_hint(tool_name, block.get("input", {}))
-                        log(f"{color}    [{tool_name}]{RESET} {DIM}{tool_hint}{RESET}")
+                        log(f"{color}    [{tool_name}]{RESET} {DIM}{tool_hint}{usage_tag}{RESET}")
                     elif btype == "text":
                         text_chunks.append(block.get("text", ""))
 
             if etype == "result":
                 result_text = event.get("result", "")
+                result_usage = event.get("usage", {})
                 subtype = event.get("subtype", "")
                 if event.get("is_error") and "hit your limit" in result_text.lower():
                     _hit_rate_limit = True
@@ -399,7 +425,7 @@ def run_claude(workspace: Path, settings_file: Path,
         result_text = f"(error: {e})"
 
     elapsed = time.time() - start
-    return result_text.strip(), elapsed, raw_events
+    return result_text.strip(), elapsed, raw_events, result_usage
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +459,7 @@ def run_agent(workspace: Path, logs_dir: Path, settings_file: Path,
     retry_delays = [30, 60, 120]
     for attempt in range(max_retries + 1):
         try:
-            output, elapsed, raw_events = run_claude(
+            output, elapsed, raw_events, usage = run_claude(
                 workspace, settings_file, prompt, system, model, effort, disallowed_tools, color)
             break
         except APIError as e:
@@ -448,7 +474,7 @@ def run_agent(workspace: Path, logs_dir: Path, settings_file: Path,
 
     if output:
         log(f"{DIM}{output}{RESET}")
-    log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
+    log(f"{color}  Completed in {elapsed:.1f}s{_usage_suffix(usage)}{RESET}")
 
     # Log files
     if planning:
@@ -512,7 +538,7 @@ def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
     retry_delays = [30, 60, 120]
     for attempt in range(max_retries + 1):
         try:
-            output, elapsed, raw_events = run_claude(
+            output, elapsed, raw_events, usage = run_claude(
                 workspace, settings_file, prompt, FACILITATOR_SYSTEM, "sonnet", "medium",
                 blocked, color, timeout=300)
             break
@@ -528,7 +554,7 @@ def run_facilitator(workspace: Path, logs_dir: Path, settings_file: Path,
 
     if output:
         log(f"{DIM}{output}{RESET}")
-    log(f"{color}  Completed in {elapsed:.1f}s{RESET}")
+    log(f"{color}  Completed in {elapsed:.1f}s{_usage_suffix(usage)}{RESET}")
 
     (logs_dir / f"{log_tag}_facilitator.md").write_text(
         f"# Facilitator — {phase_label}\n\n{output}\n")
