@@ -240,10 +240,13 @@ def _tool_hint(tool_name: str, tool_input: dict) -> str:
 def run_claude(workspace: Path, settings_file: Path,
                prompt: str, system_prompt: str, model: str, effort: str,
                disallowed_tools: list[str], color: str,
-               timeout: int = 600) -> tuple[str, float, list[str]]:
+               timeout: int = 900, idle_timeout: int = 120) -> tuple[str, float, list[str]]:
     """
     Run a claude -p subprocess with stream-json output.
     Returns (result_text, elapsed_seconds, raw_events).
+
+    timeout: hard wall-clock limit (seconds).
+    idle_timeout: max seconds with no output before killing the process.
     """
     cmd = [
         "claude",
@@ -286,11 +289,15 @@ def run_claude(workspace: Path, settings_file: Path,
         proc.stdin.write(prompt)
         proc.stdin.close()
 
-        deadline = time.time() + timeout
+        hard_deadline = time.time() + timeout
+        last_activity = time.time()
         while True:
-            remaining = deadline - time.time()
+            now = time.time()
+            remaining = min(hard_deadline - now, last_activity + idle_timeout - now)
             if remaining <= 0:
-                raise subprocess.TimeoutExpired(cmd, timeout)
+                kind = "idle" if (now - last_activity >= idle_timeout) else "wall-clock"
+                raise subprocess.TimeoutExpired(cmd, timeout,
+                                                stderr=f"({kind} timeout)")
             # Poll stdout with timeout to avoid blocking forever
             ready = select.select([proc.stdout], [], [], min(remaining, 30))
             if not ready[0]:
@@ -299,6 +306,7 @@ def run_claude(workspace: Path, settings_file: Path,
                     break
                 continue
             line = proc.stdout.readline()
+            last_activity = time.time()
             if not line:
                 break
             line = line.strip()
@@ -354,11 +362,12 @@ def run_claude(workspace: Path, settings_file: Path,
         if _hit_api_error:
             raise APIError(result_text.strip())
 
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as te:
         proc.kill()
         proc.wait(timeout=10)
+        hint = str(te.stderr) if te.stderr else "wall-clock timeout"
         stderr = (proc.stderr.read() or "")[:2000].strip()
-        result_text = f"(agent timed out)\n{stderr}".strip()
+        result_text = f"(agent timed out — {hint})\n{stderr}".strip()
     except KeyboardInterrupt:
         # Ctrl-C during readline — wait for the agent to finish naturally
         log(f"{DIM}    (waiting for agent to finish...){RESET}")
