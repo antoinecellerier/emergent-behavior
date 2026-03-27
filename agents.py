@@ -187,7 +187,9 @@ def build_prompt(workspace: Path, agent: str, round_num: int, num_rounds: int, *
         f"</context>\n\n"
         f"<instructions>\n{action}\n\n"
         f"When finished, write a summary for teammates. Start with a single "
-        f"headline sentence (this becomes the git commit message), then details.\n"
+        f"headline sentence (this becomes the git commit message), then details. "
+        f"Before finishing, verify your summary matches your stated intentions — "
+        f"check that every action you planned was completed or explicitly deferred.\n"
         f"</instructions>"
     )
 

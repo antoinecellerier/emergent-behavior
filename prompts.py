@@ -179,7 +179,10 @@ write NEW_AGENT.json — either a single object or an array for multiple: \
 Base the role_prompt on the requesting agent's description. Rewrite it as \
 a second-person instruction ("You are the...", "Your priorities are...") \
 but keep the substance — do not embellish or add your own interpretation. \
-Set requested_by to a brief quote of the original request (who asked, why).
+Set requested_by to a brief quote of the original request (who asked, why). \
+Watch for discrepancies: if an agent listed N roles they want to recruit \
+but only issued formal "We need a [Role] agent" requests for fewer than N, \
+flag the missing ones in your summary so the agent can fix it next round.
 If agents said their role is complete, \
 write RETIRE_AGENT.json — same format: \
 [{"name": "...", "reason": "..."}, ...]
