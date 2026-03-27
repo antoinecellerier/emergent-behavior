@@ -228,7 +228,7 @@ def _usage_suffix(usage: dict, include_output: bool = True) -> str:
         return ""
     cache_pct = int(cached * 100 / total_in) if total_in else 0
     if include_output:
-        return f" [{_fmt_tokens(total_in)} in · {cache_pct}% cache · {_fmt_tokens(out)} out]"
+        return f" [{_fmt_tokens(total_in)} in · {cache_pct}% cache · {_fmt_tokens(out)} out+think]"
     return f" [{_fmt_tokens(total_in)} in · {cache_pct}% cache]"
 
 
