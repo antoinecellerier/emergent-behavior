@@ -75,27 +75,24 @@ Each agent turn is a single `claude -p` invocation:
 ```
 SYSTEM PROMPT (--system-prompt flag)
 ├── SHARED_CONTEXT          ← identical for all agents in a round
-│   ├── Project objective
-│   ├── Team roster (names + descriptions)
-│   ├── Communication rules
-│   └── Ground rules
+│   ├── <project>           objective description
+│   ├── <team>              roster + role ownership note
+│   ├── <communication>     message board priority, practices file
+│   └── <rules>             ground rules (1-7)
 └── ROLE_PROMPT             ← unique per agent
 
 USER PROMPT (piped via stdin)
-├── Stable prefix           ← identical for all agents in a phase (cacheable)
-│   ├── Status line (round/phase numbers)
-│   ├── Action block (PLANNING or IMPLEMENTATION instructions)
-│   └── Working directory note
-├── ---
-├── Volatile data           ← unique per agent, changes every turn
-│   ├── Workspace file tree
-│   ├── Recent git history (last 15 commits)
-│   └── Changes since this agent's last turn
-├── ---
-└── Closing instructions    ← action block repeated + summary format
+├── Status line
+├── <instructions>          ← cacheable prefix (primacy)
+│   └── Action block + working directory note
+├── <context>               ← volatile, unique per agent/turn
+│   ├── <workspace_files>
+│   ├── <git_history>
+│   └── <changes_since_last_turn>
+└── <instructions>          ← action block repeated (recency) + summary format
 ```
 
-The action block (e.g., "PLANNING — do NOT write any code") appears twice: once in the cacheable prefix (primacy) and once after volatile data (recency). This follows Anthropic's prompt engineering guidance that LLMs attend most to content at the beginning and end of prompts, with middle content receiving less attention. The Facilitator uses a separate system prompt (`FACILITATOR_SYSTEM`) and does not share cache with regular agents.
+All prompt sections use XML tags to help Claude parse the boundary between instructions and context data. The action block (e.g., "PLANNING — do NOT write any code") appears in both `<instructions>` blocks — once in the cacheable prefix (primacy) and once after volatile data (recency). This follows Anthropic's prompt engineering guidance that LLMs attend most to content at the beginning and end of prompts. The Facilitator uses a separate system prompt (`FACILITATOR_SYSTEM`) with `<tasks>`, `<allowed>`, and `<forbidden>` sections, and does not share cache with regular agents.
 
 ## Communication Model
 
