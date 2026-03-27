@@ -228,10 +228,13 @@ def _tool_hint(tool_name: str, tool_input: dict) -> str:
     """Extract a short human-readable hint from a tool invocation."""
     if tool_name == "Read":
         path = _short_path(tool_input.get("file_path", ""))
-        offset = tool_input.get("offset")
-        limit = tool_input.get("limit")
+        try:
+            offset = int(tool_input.get("offset") or 0)
+            limit = int(tool_input.get("limit") or 0)
+        except (ValueError, TypeError):
+            return path
         if offset or limit:
-            rng = f" [{offset or 0}:{(offset or 0) + limit}]" if limit else f" [from {offset}]"
+            rng = f" [{offset}:{offset + limit}]" if limit else f" [from {offset}]"
             return path + rng
         return path
     if tool_name in ("Write",):
@@ -365,7 +368,10 @@ def run_claude(workspace: Path, settings_file: Path,
                     btype = block.get("type", "")
                     if btype == "tool_use":
                         tool_name = block.get("name", "?")
-                        tool_hint = _tool_hint(tool_name, block.get("input", {}))
+                        try:
+                            tool_hint = _tool_hint(tool_name, block.get("input", {}))
+                        except Exception:
+                            tool_hint = ""
                         log(f"{color}    [{tool_name}]{RESET} {DIM}{tool_hint}{usage_tag}{RESET}")
                     elif btype == "text":
                         text_chunks.append(block.get("text", ""))
