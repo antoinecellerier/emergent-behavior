@@ -82,18 +82,20 @@ SYSTEM PROMPT (--system-prompt flag)
 └── ROLE_PROMPT             ← unique per agent
 
 USER PROMPT (piped via stdin)
-├── Stable prefix           ← identical for all agents in a phase
+├── Stable prefix           ← identical for all agents in a phase (cacheable)
 │   ├── Status line (round/phase numbers)
 │   ├── Action block (PLANNING or IMPLEMENTATION instructions)
-│   └── Working directory note + focus/summary instructions
+│   └── Working directory note
 ├── ---
-└── Volatile suffix         ← unique per agent, changes every turn
-    ├── Workspace file tree
-    ├── Recent git history (last 15 commits)
-    └── Changes since this agent's last turn
+├── Volatile data           ← unique per agent, changes every turn
+│   ├── Workspace file tree
+│   ├── Recent git history (last 15 commits)
+│   └── Changes since this agent's last turn
+├── ---
+└── Closing instructions    ← action block repeated + summary format
 ```
 
-Stable content is ordered before volatile content to maximize Claude's automatic prompt cache hit rate across sequential agent turns within the same phase. The Facilitator uses a separate system prompt (`FACILITATOR_SYSTEM`) and does not share cache with regular agents.
+The action block (e.g., "PLANNING — do NOT write any code") appears twice: once in the cacheable prefix (primacy) and once after volatile data (recency). This follows Anthropic's prompt engineering guidance that LLMs attend most to content at the beginning and end of prompts, with middle content receiving less attention. The Facilitator uses a separate system prompt (`FACILITATOR_SYSTEM`) and does not share cache with regular agents.
 
 ## Communication Model
 
