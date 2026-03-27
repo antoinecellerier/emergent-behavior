@@ -409,6 +409,8 @@ def run_claude(workspace: Path, settings_file: Path,
         if _hit_api_error:
             raise APIError(result_text.strip())
 
+    except (RateLimitError, APIError, AgentTimeoutError):
+        raise
     except subprocess.TimeoutExpired as te:
         proc.kill()
         proc.wait(timeout=10)
