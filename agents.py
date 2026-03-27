@@ -240,13 +240,13 @@ def _tool_hint(tool_name: str, tool_input: dict) -> str:
 def run_claude(workspace: Path, settings_file: Path,
                prompt: str, system_prompt: str, model: str, effort: str,
                disallowed_tools: list[str], color: str,
-               timeout: int = 900, idle_timeout: int = 120) -> tuple[str, float, list[str]]:
+               timeout: int = 1800, idle_timeout: int = 900) -> tuple[str, float, list[str]]:
     """
     Run a claude -p subprocess with stream-json output.
     Returns (result_text, elapsed_seconds, raw_events).
 
-    timeout: hard wall-clock limit (seconds).
-    idle_timeout: max seconds with no output before killing the process.
+    timeout: hard wall-clock limit (default 30 min).
+    idle_timeout: max seconds with no output (default 15 min).
     """
     cmd = [
         "claude",
