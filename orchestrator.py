@@ -191,16 +191,37 @@ def main():
 
     # --- Round range ---
     partial_agents = []
+    resume_plan_from = 0       # 0 = planning done (or not needed)
+    partial_plan_agents = []
     if resume:
-        last_complete, partial_agents = detect_resume_state(workspace, active_agents)
+        last_complete, partial_agents, last_plan, partial_plan_agents = \
+            detect_resume_state(workspace, active_agents)
         start_round = last_complete + 1
         end_round = last_complete + args.rounds
+        # Check if planning was still in progress
+        if last_complete == 0 and last_plan < args.planning_rounds:
+            if partial_plan_agents:
+                resume_plan_from = last_plan + 1
+            else:
+                resume_plan_from = last_plan + 1
         if partial_agents:
             log(f"{BOLD}  Resuming interrupted round {start_round} "
                 f"({', '.join(partial_agents)} still to go){RESET}")
+        if resume_plan_from:
+            plan_msg = f"  Resuming planning from round {resume_plan_from}"
+            if partial_plan_agents:
+                plan_msg += f" ({', '.join(partial_plan_agents)} still to go)"
+            log(f"{BOLD}{plan_msg}{RESET}")
     else:
         start_round = 1
         end_round = args.rounds
+
+    if resume and resume_plan_from:
+        planning_status = f"resuming from round {resume_plan_from}/{args.planning_rounds}"
+    elif resume:
+        planning_status = "done (resuming implementation)"
+    else:
+        planning_status = f"{args.planning_rounds} rounds"
 
     log(f"""{BOLD}
  ╔═══════════════════════════════════════════════════════════╗
@@ -210,7 +231,7 @@ def main():
 
   Run         : {run_dir.name}
   Agents      : {', '.join(active_agents)}
-  Planning    : {'skip (resuming)' if resume else f"{args.planning_rounds} rounds"}
+  Planning    : {planning_status}
   Facilitator : {'every ' + str(args.facilitator_every) + ' rounds' if use_facilitator else 'disabled'}
   Rounds      : {start_round} to {end_round}{f' (resuming)' if resume else ''}
   Workspace   : {workspace}
@@ -218,14 +239,20 @@ def main():
 
     try:
         # --- Planning ---
-        if not resume and args.planning_rounds > 0:
-            for plan_round in range(1, args.planning_rounds + 1):
+        plan_start = resume_plan_from if resume else 1
+        if plan_start and plan_start <= args.planning_rounds:
+            for plan_round in range(plan_start, args.planning_rounds + 1):
+                if partial_plan_agents and plan_round == plan_start:
+                    agents_this_plan = partial_plan_agents
+                else:
+                    agents_this_plan = active_agents
+
                 log(f"\n{BOLD}{'#' * 60}")
                 log(f"  PLANNING {plan_round}/{args.planning_rounds} — no code, just coordination")
-                log(f"  Active agents: {', '.join(active_agents)}")
+                log(f"  Active agents: {', '.join(agents_this_plan)}")
                 log(f"{'#' * 60}{RESET}")
 
-                for agent in active_agents:
+                for agent in agents_this_plan:
                     run_agent(workspace, logs_dir, settings_file,
                               agent, agent_configs, 0, end_round,
                               planning=True, plan_round=plan_round,

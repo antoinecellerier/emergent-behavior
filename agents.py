@@ -505,7 +505,11 @@ def run_agent(workspace: Path, logs_dir: Path, settings_file: Path,
     if output:
         append_to_board(workspace, agent, label, output)
     first_line = output.split("\n")[0][:72] if output else "no output"
-    changed = git_commit(workspace, f"[{agent}] R{round_num}: {first_line}")
+    if planning:
+        commit_tag = f"P{plan_round}"
+    else:
+        commit_tag = f"R{round_num}"
+    changed = git_commit(workspace, f"[{agent}] {commit_tag}: {first_line}")
     log(f"{color}  {'changes committed' if changed else '(no file changes)'}{RESET}\n")
 
     return output
@@ -739,32 +743,77 @@ def check_for_reorder(run_dir: Path, workspace: Path,
     return active_agents
 
 
-def detect_resume_state(workspace: Path, agents: list[str]) -> tuple[int, list[str]]:
+def detect_resume_state(workspace: Path, agents: list[str]) -> tuple[int, list[str], int, list[str]]:
     """Parse workspace git log to find where to resume.
 
-    Returns (last_complete_round, remaining_agents_in_partial_round).
+    Returns (last_complete_round, remaining_agents_in_partial_round,
+             last_complete_plan_round, remaining_agents_in_partial_plan_round).
     """
     import re
     result = git(workspace, "log", "--oneline", "--all")
     if not result.stdout.strip():
-        return 0, []
+        return 0, [], 0, []
 
-    pattern = re.compile(r'\[(.+?)\] R(\d+):')
+    r_pattern = re.compile(r'\[(.+?)\] R(\d+):')
+    p_pattern = re.compile(r'\[(.+?)\] P(\d+):')
     rounds: dict[int, set[str]] = {}
+    plan_rounds: dict[int, set[str]] = {}
     for line in result.stdout.splitlines():
-        m = pattern.search(line)
+        m = r_pattern.search(line)
         if m:
             agent_name, round_num = m.group(1), int(m.group(2))
             rounds.setdefault(round_num, set()).add(agent_name)
+        m = p_pattern.search(line)
+        if m:
+            agent_name, plan_num = m.group(1), int(m.group(2))
+            plan_rounds.setdefault(plan_num, set()).add(agent_name)
 
-    if not rounds:
-        return 0, []
+    # Implementation rounds
+    last_round = 0
+    round_remaining: list[str] = []
+    if rounds:
+        max_round = max(rounds.keys())
+        if rounds[max_round] >= set(agents):
+            last_round = max_round
+        else:
+            last_round = max_round - 1
+            round_remaining = [a for a in agents if a not in rounds[max_round]]
 
-    max_round = max(rounds.keys())
-    completed_agents = rounds[max_round]
-
-    if completed_agents >= set(agents):
-        return max_round, []
+    # Planning rounds — use both P-tagged commits and log files
+    last_plan = 0
+    plan_remaining: list[str] = []
+    if plan_rounds:
+        max_plan = max(plan_rounds.keys())
+        if plan_rounds[max_plan] >= set(agents):
+            last_plan = max_plan
+        else:
+            last_plan = max_plan - 1
+            plan_remaining = [a for a in agents if a not in plan_rounds[max_plan]]
     else:
-        remaining = [a for a in agents if a not in completed_agents]
-        return max_round - 1, remaining
+        # Fallback: check log files for older runs that used R0 format
+        logs_dir = workspace.parent / "logs"
+        if logs_dir.exists():
+            import re as _re
+            plan_log_pattern = _re.compile(r'plan_(\d+)_(.+)\.md')
+            plan_log_rounds: dict[int, set[str]] = {}
+            for f in logs_dir.iterdir():
+                m = plan_log_pattern.match(f.name)
+                if m:
+                    pnum = int(m.group(1))
+                    aname = m.group(2)
+                    # Exclude facilitator from agent count
+                    if aname != "facilitator":
+                        plan_log_rounds.setdefault(pnum, set()).add(aname)
+            if plan_log_rounds:
+                max_plan = max(plan_log_rounds.keys())
+                # Check if all non-facilitator agents completed the max round
+                # (agent names in logs are lowercased, so compare lowercase)
+                lower_agents = {a.lower() for a in agents}
+                if plan_log_rounds[max_plan] >= lower_agents:
+                    last_plan = max_plan
+                else:
+                    last_plan = max_plan - 1
+                    completed_lower = plan_log_rounds[max_plan]
+                    plan_remaining = [a for a in agents if a.lower() not in completed_lower]
+
+    return last_round, round_remaining, last_plan, plan_remaining
