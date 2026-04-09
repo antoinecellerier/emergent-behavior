@@ -203,7 +203,7 @@ def test_bash_sandbox_blocks_home():
 
     try:
         r = _run_claude_stream(
-            "Run this exact bash command: ls /home/antoine/Desktop/ "
+            f"Run this exact bash command: ls {Path.home() / 'Desktop'}/ "
             "Show the full output or error message.",
             system="Run the exact command requested.",
             cwd=str(workspace),

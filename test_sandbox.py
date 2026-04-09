@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 HOOK = str(Path(__file__).parent / ".claude" / "hooks" / "sandbox-read.sh")
-WORKSPACE = "/home/antoine/stuff/emergent-behavior/runs/test_run/workspace"
+WORKSPACE = str(Path(__file__).parent.resolve() / "runs" / "test_run" / "workspace")
 PROJECT_DIR = str(Path(__file__).parent.resolve())
 
 
@@ -87,7 +87,7 @@ class TestHookWorkspaceScoped:
         assert not ok, "should block reading the hook itself"
 
     def test_read_other_run_blocked(self):
-        other = "/home/antoine/stuff/emergent-behavior/runs/other_run/workspace/secret.py"
+        other = str(Path(__file__).parent.resolve() / "runs" / "other_run" / "workspace" / "secret.py")
         ok, _ = _run_hook("Read", {"file_path": other}, WORKSPACE)
         assert not ok, "should block other runs' workspaces"
 
